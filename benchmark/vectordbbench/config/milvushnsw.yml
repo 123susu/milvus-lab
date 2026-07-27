@@ -1,0 +1,48 @@
+# VectorDBBench 1.0.22 - Milvus HNSW
+#
+# Run:
+#   .\benchmark\vectordbbench\run_benchmark.ps1 -Command milvushnsw
+#
+# Validate without running:
+#   .\benchmark\vectordbbench\run_benchmark.ps1 -Command milvushnsw -DryRun
+
+# LLM report generation. Fill base_url and model yourself. Store the actual
+# API key in the environment variable named by api_key_env, never in this file.
+_report:
+  enabled: false
+  base_url: "https://ws-ulvbraz6azwp77bu.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+  model: "qwen-plus"
+  api_key_env: DASHSCOPE_API_KEY
+  language: 简体中文
+  temperature: 0.2
+  timeout_seconds: 120
+
+milvushnsw:
+  # Milvus connection
+  uri: http://localhost:19530
+  num_shards: 1
+  replica_number: 1
+
+  # Dataset and test stages
+  case_type: Performance1536D50K
+  drop_old: true
+  load: true
+  load_concurrency: 4
+  search_serial: true
+  search_concurrent: true
+
+  # Search workload
+  k: 100
+  concurrency_duration: 10
+  num_concurrency: "1,5,10,20"
+  concurrency_timeout: 3600
+
+  # HNSW index and search parameters
+  m: 16
+  ef_construction: 128
+  ef_search: 128
+
+  # Result labels. The runner appends HHmmssfff to task_label automatically,
+  # so repeated runs on the same day do not overwrite each other.
+  db_label: local-cluster-8c10_5g-2_6_21
+  task_label: hnsw-performance-cluster-local

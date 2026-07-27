@@ -1,0 +1,58 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "ops", "color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}, "id": 1,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "sum(rate(milvus_proxy_insert_vectors_count[$__rate_interval]))", "legendFormat": "Vectors/s", "range": true, "refId": "A"}],
+      "title": "Proxy Insert Throughput", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}, "id": 2,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "sum(milvus_datacoord_compaction_task_num)", "legendFormat": "Compaction tasks", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "sum(milvus_indexnode_index_task_count)", "legendFormat": "Index tasks", "range": true, "refId": "B"}
+      ],
+      "title": "Compaction and Index Task Queue", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "ms", "color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}, "id": 3,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(milvus_indexnode_build_index_latency_bucket[$__rate_interval])))", "legendFormat": "P95", "range": true, "refId": "A"}],
+      "title": "Index Build Latency", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "bytes", "color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}, "id": 4,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "sum(milvus_datacoord_stored_binlog_size)", "legendFormat": "Binlog", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "sum(milvus_datacoord_stored_index_files_size)", "legendFormat": "Index files", "range": true, "refId": "B"}
+      ],
+      "title": "Persistent Data in Object Storage", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}, "id": 5,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "sum(milvus_datanode_flushed_data_rows)", "legendFormat": "Flushed rows", "range": true, "refId": "A"}],
+      "title": "Flushed Rows", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "ms", "color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}, "id": 6,
+      "options": {"legend": {"calcs": ["lastNotNull", "max"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(milvus_datanode_compaction_latency_bucket[$__rate_interval])))", "legendFormat": "P95", "range": true, "refId": "A"}],
+      "title": "Compaction Latency", "type": "timeseries"
+    }
+  ],
+  "refresh": "5s", "schemaVersion": 41, "tags": ["milvus", "cluster", "write", "index"],
+  "templating": {"list": []}, "time": {"from": "now-15m", "to": "now"}, "timepicker": {}, "timezone": "browser",
+  "title": "Milvus Write & Index", "uid": "milvus-write-index", "version": 1
+}

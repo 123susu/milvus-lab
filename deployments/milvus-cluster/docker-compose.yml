@@ -1,0 +1,179 @@
+name: milvus-cluster-local
+
+x-milvus-common: &milvus-common
+  image: milvusdb/milvus:v2.6.21
+  security_opt:
+    - seccomp:unconfined
+  environment:
+    ETCD_ENDPOINTS: etcd:2379
+    MINIO_ADDRESS: minio:9000
+    MQ_TYPE: woodpecker
+  volumes:
+    - ./user.yaml:/milvus/configs/user.yaml:ro
+  restart: unless-stopped
+  depends_on:
+    etcd:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.25
+    container_name: milvus-cluster-etcd
+    environment:
+      ETCD_AUTO_COMPACTION_MODE: revision
+      ETCD_AUTO_COMPACTION_RETENTION: "1000"
+      ETCD_QUOTA_BACKEND_BYTES: "4294967296"
+      ETCD_SNAPSHOT_COUNT: "50000"
+    command:
+      - etcd
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --data-dir=/etcd
+    volumes:
+      - etcd-data:/etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: milvus-cluster-minio
+    command: minio server /minio_data --console-address ":9001"
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - minio-data:/minio_data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 1G
+    restart: unless-stopped
+
+  mixcoord:
+    <<: *milvus-common
+    container_name: milvus-cluster-mixcoord
+    command: ["milvus", "run", "mixcoord"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1536M
+
+  proxy:
+    <<: *milvus-common
+    container_name: milvus-cluster-proxy
+    command: ["milvus", "run", "proxy"]
+    ports:
+      - "19530:19530"
+      - "127.0.0.1:9091:9091"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1G
+
+  streamingnode:
+    <<: *milvus-common
+    container_name: milvus-cluster-streamingnode
+    command: ["milvus", "run", "streamingnode"]
+    volumes:
+      - ./user.yaml:/milvus/configs/user.yaml:ro
+      - streamingnode-data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1536M
+
+  datanode:
+    <<: *milvus-common
+    container_name: milvus-cluster-datanode
+    command: ["milvus", "run", "datanode"]
+    volumes:
+      - ./user.yaml:/milvus/configs/user.yaml:ro
+      - datanode-data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 2G
+
+  querynode:
+    <<: *milvus-common
+    container_name: milvus-cluster-querynode
+    command: ["milvus", "run", "querynode"]
+    volumes:
+      - ./user.yaml:/milvus/configs/user.yaml:ro
+      - querynode-data:/var/lib/milvus
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.00"
+          memory: 3G
+
+networks:
+  default:
+    name: milvus-lab
+    external: true
+
+volumes:
+  etcd-data:
+    name: milvus-cluster-etcd-data
+  minio-data:
+    name: milvus-cluster-minio-data
+  streamingnode-data:
+    name: milvus-cluster-streamingnode-data
+  datanode-data:
+    name: milvus-cluster-datanode-data
+  querynode-data:
+    name: milvus-cluster-querynode-data

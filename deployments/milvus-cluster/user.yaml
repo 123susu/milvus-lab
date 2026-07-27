@@ -1,0 +1,14 @@
+# Local development overrides for Milvus Cluster.
+# Settings not listed here retain Milvus v2.6.21 defaults.
+
+log:
+  level: info
+  format: text
+  stdout: true
+
+common:
+  security:
+    authorizationEnabled: false
+
+proxy:
+  enableWebUI: true

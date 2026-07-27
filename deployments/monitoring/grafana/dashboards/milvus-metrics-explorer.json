@@ -1,0 +1,82 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "text",
+      "title": "How to use this explorer",
+      "gridPos": {"h": 4, "w": 24, "x": 0, "y": 0},
+      "options": {
+        "mode": "markdown",
+        "content": "1. Select one or more **components** at the top.\\n2. Select a **metric family**; the list is dynamically populated from the metrics currently exposed by the selected component(s).\\n3. Use the trend panel for change over time; use the table to inspect every current time series and its labels.\\n\\nThis dashboard reads raw Milvus `/metrics` data collected by Prometheus. It intentionally does not aggregate away labels such as `function_name`, `status`, `node_id`, or histogram bucket `le`."
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "${metric} — Raw Time Series",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 4},
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "lineWidth": 1, "fillOpacity": 5, "showPoints": "never", "spanNulls": false}, "mappings": []}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true, "calcs": ["lastNotNull", "max", "mean"]}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"editorMode": "code", "expr": "${metric}{job=\"milvus-cluster\", component=~\"${component:regex}\"}", "legendFormat": "{{component}} {{instance}} {{function_name}} {{status}} {{node_id}} {{le}}", "range": true, "refId": "A"}]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "${metric} — Current Series and Labels",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 14},
+      "fieldConfig": {"defaults": {"mappings": []}, "overrides": []},
+      "options": {"showHeader": true, "cellHeight": "sm", "footer": {"show": false}},
+      "targets": [{"editorMode": "code", "expr": "${metric}{job=\"milvus-cluster\", component=~\"${component:regex}\"}", "format": "table", "instant": true, "refId": "A"}],
+      "transformations": [{"id": "labelsToFields", "options": {}}]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 41,
+  "tags": ["milvus", "metrics", "explorer"],
+  "templating": {
+    "list": [
+      {
+        "name": "component",
+        "label": "Component",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "definition": "label_values(up{job=\"milvus-cluster\"}, component)",
+        "query": {"query": "label_values(up{job=\"milvus-cluster\"}, component)", "refId": "PrometheusVariableQueryEditor-VariableQuery"},
+        "includeAll": true,
+        "allValue": ".+",
+        "multi": true,
+        "hide": 0,
+        "refresh": 1,
+        "sort": 1,
+        "current": {"text": "All", "value": "$__all"},
+        "options": []
+      },
+      {
+        "name": "metric",
+        "label": "Metric family",
+        "type": "query",
+        "datasource": {"type": "prometheus", "uid": "prometheus"},
+        "definition": "label_values({job=\"milvus-cluster\", component=~\"$component\"}, __name__)",
+        "query": {"query": "label_values({job=\"milvus-cluster\", component=~\"$component\"}, __name__)", "refId": "PrometheusVariableQueryEditor-VariableQuery"},
+        "includeAll": false,
+        "multi": false,
+        "hide": 0,
+        "refresh": 1,
+        "sort": 1,
+        "current": {"text": "milvus_build_info", "value": "milvus_build_info"},
+        "options": []
+      }
+    ]
+  },
+  "time": {"from": "now-15m", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Milvus Metrics Explorer",
+  "uid": "milvus-metrics-explorer",
+  "version": 1
+}
