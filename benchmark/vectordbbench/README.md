@@ -53,6 +53,22 @@ Open the provisioned Grafana dashboard:
 http://localhost:3001/d/milvus-cluster-local/milvus-cluster-local
 ```
 
+### Single-query Trace test
+
+The local dashboard includes a **single-query trace test** when the FastAPI
+backend is enabled. It:
+
+1. reads one existing vector from the selected Collection;
+2. executes one read-only Milvus Search;
+3. resolves the matching Proxy Search trace from local Jaeger;
+4. displays every returned span on a shared waterfall timeline.
+
+The default Collection is `TraceDemo`. On its first use, the API creates this
+small, isolated HNSW Collection from deterministic text-derived vectors. It
+does not modify or delete the `VDBBench` experiment Collection. A different
+Collection selected in the UI must already exist, contain data, and be loaded.
+Jaeger is available at `http://localhost:16686`.
+
 It samples all Milvus Cluster components every second and shows component
 health plus per-container CPU and memory. Prometheus target status is available
 at:

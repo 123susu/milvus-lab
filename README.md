@@ -10,7 +10,7 @@
 - 保留旧的 `milvus-standalone` 容器作为回退，不与 Cluster 同时运行。
 - 配置 VectorDBBench `1.0.22`，当前基线为 Milvus HNSW。
 - 使用 `Performance1536D50K`（50,000 条、1536 维真实文本向量）进行检索评测。
-- 部署 Prometheus、cAdvisor、Grafana；采集 Cluster 容器资源指标和 Milvus 组件 `/metrics`。
+- 部署 Prometheus、cAdvisor、Grafana 和 Jaeger；采集 Cluster 指标并查看分布式请求链路。
 - 已建立 Cluster 总览、查询压测、写入索引、五个组件看板，以及原始指标浏览器。
 
 ## 架构与边界
@@ -66,7 +66,7 @@ docker ps
 Invoke-WebRequest -UseBasicParsing http://localhost:9091/healthz
 ```
 
-正常情况下，7 个 `milvus-cluster-*` 容器应为 `healthy`。`milvus-standalone` 应保持停止状态，因为它与 Cluster 占用相同的 `19530`、`9091` 端口。
+正常情况下，7 个 `milvus-cluster-*` 容器应为 `healthy`，`milvus-jaeger` 应为运行状态。`milvus-standalone` 应保持停止状态，因为它与 Cluster 占用相同的 `19530`、`9091` 端口。
 
 ## 常用地址
 
@@ -75,6 +75,7 @@ Invoke-WebRequest -UseBasicParsing http://localhost:9091/healthz
 | Milvus SDK | `http://localhost:19530` |
 | Attu | `http://localhost:3000` |
 | Milvus WebUI | `http://localhost:9091/webui/` |
+| Jaeger Trace UI | `http://localhost:16686` |
 | MinIO Console | `http://localhost:9001` |
 | Prometheus | `http://localhost:9090` |
 | Prometheus Targets | `http://localhost:9090/targets` |

@@ -12,3 +12,14 @@ common:
 
 proxy:
   enableWebUI: true
+  accessLog:
+    enable: true
+
+trace:
+  exporter: otlp
+  sampleFraction: 1
+  otlp:
+    endpoint: jaeger:4317
+    method: grpc
+    secure: false
+  initTimeoutSeconds: 10

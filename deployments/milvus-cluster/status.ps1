@@ -9,6 +9,7 @@ docker compose -f $composeFile ps
 Write-Host ""
 Write-Host "Resource usage:"
 docker stats --no-stream --format "table {{.Name}}`t{{.CPUPerc}}`t{{.MemUsage}}`t{{.MemPerc}}" `
+    milvus-jaeger `
     milvus-cluster-etcd `
     milvus-cluster-minio `
     milvus-cluster-mixcoord `

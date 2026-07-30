@@ -16,8 +16,21 @@ x-milvus-common: &milvus-common
       condition: service_healthy
     minio:
       condition: service_healthy
+    jaeger:
+      condition: service_started
 
 services:
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    container_name: milvus-jaeger
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16686:16686"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+    restart: unless-stopped
+
   etcd:
     image: quay.io/coreos/etcd:v3.5.25
     container_name: milvus-cluster-etcd

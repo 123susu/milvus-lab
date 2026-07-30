@@ -31,6 +31,11 @@ from metrics.index_profiles import (
     expand_index_matrix,
     public_profiles,
 )
+from metrics.tracing import (
+    MilvusTraceSearchService,
+    TraceSearchError,
+    TraceSearchRequest as TraceServiceRequest,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -48,6 +53,10 @@ BENCHMARK_RUNNER = (
     PROJECT_ROOT / "benchmark" / "vectordbbench" / "run_benchmark.ps1"
 )
 JOBS_ROOT = PROJECT_ROOT / "results" / "vectordbbench" / "jobs"
+JAEGER_QUERY_URL = os.environ.get(
+    "MILVUS_JAEGER_QUERY_URL", "http://127.0.0.1:16686"
+)
+TRACE_SEARCH_SERVICE: MilvusTraceSearchService | None = None
 
 
 class ApiModel(BaseModel):
@@ -177,6 +186,54 @@ class BenchmarkAggregateListResponse(ApiModel):
     total: int
     limit: int
     offset: int
+
+
+class TraceSearchRequest(ApiModel):
+    uri: str = Field(min_length=8, max_length=512)
+    database: str = Field(
+        default="default",
+        min_length=1,
+        max_length=255,
+        pattern=r"^[A-Za-z0-9_]+$",
+    )
+    collection_name: str = Field(
+        default="TraceDemo",
+        min_length=1,
+        max_length=255,
+        pattern=r"^[A-Za-z0-9_]+$",
+    )
+    top_k: int = Field(default=10, ge=1, le=2048)
+
+    @field_validator("uri")
+    @classmethod
+    def validate_http_url(cls, value: str) -> str:
+        parsed = urlsplit(value)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ValueError("must be an HTTP or HTTPS URL")
+        return value
+
+
+class TraceSpanResponse(ApiModel):
+    span_id: str
+    parent_span_id: str | None
+    service: str
+    operation: str
+    start_offset_ms: float
+    duration_ms: float
+    depth: int
+    error: bool
+
+
+class TraceSearchResponse(ApiModel):
+    trace_id: str
+    jaeger_url: str
+    collection_name: str
+    vector_field: str
+    top_k: int
+    hit_count: int
+    client_latency_ms: float
+    total_duration_ms: float
+    spans: list[TraceSpanResponse]
 
 
 class BenchmarkCommonParametersRequest(ApiModel):
@@ -804,6 +861,35 @@ def cancel_benchmark_job(
         return build_job_response(JOB_MANAGER.cancel(job_id))
     except KeyError as error:
         raise HTTPException(status_code=404, detail="Benchmark job was not found") from error
+
+
+@app.post(
+    "/api/trace-search",
+    response_model=TraceSearchResponse,
+)
+def run_trace_search(request: TraceSearchRequest) -> TraceSearchResponse:
+    global TRACE_SEARCH_SERVICE
+    try:
+        if TRACE_SEARCH_SERVICE is None:
+            TRACE_SEARCH_SERVICE = MilvusTraceSearchService(
+                jaeger_query_url=JAEGER_QUERY_URL,
+            )
+        result = TRACE_SEARCH_SERVICE.search(
+            TraceServiceRequest(
+                uri=request.uri,
+                database=request.database,
+                collection_name=request.collection_name,
+                top_k=request.top_k,
+            )
+        )
+        return TraceSearchResponse.model_validate(result)
+    except TraceSearchError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Trace 服务不可用：{error}",
+        ) from error
 
 
 def parse_args() -> argparse.Namespace:

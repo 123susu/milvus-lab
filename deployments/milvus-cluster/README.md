@@ -7,6 +7,7 @@ for a local Milvus `v2.6.21` cluster.
 
 | Service | Purpose | Local resource limit |
 |---|---|---:|
+| Jaeger | OpenTelemetry trace collection and inspection | Docker default |
 | etcd | Metadata storage | 0.5 CPU / 512 MiB |
 | MinIO | Object storage | 0.5 CPU / 1 GiB |
 | MixCoord | RootCoord, QueryCoord, and DataCoord control plane | 1 CPU / 1.5 GiB |
@@ -42,11 +43,26 @@ Endpoints:
 ```text
 Milvus SDK:    http://localhost:19530
 Milvus WebUI:  http://localhost:9091/webui/
+Jaeger UI:     http://localhost:16686
 MinIO API:     http://localhost:9000
 MinIO Console: http://localhost:9001
 ```
 
 Milvus authentication remains disabled, matching the previous local setup.
+All requests are sampled in this local development deployment and exported to
+Jaeger over OTLP/gRPC. Proxy access logs are also enabled and include the trace
+ID, making it possible to correlate an SDK request with its distributed trace.
+
+To inspect a search request:
+
+1. run the request against `localhost:19530`;
+2. open the Jaeger UI;
+3. select a Milvus service and narrow the time range;
+4. filter for the search operation or paste a trace ID emitted by an
+   OpenTelemetry-instrumented client.
+
+`trace.sampleFraction` is set to `1` for local debugging. Reduce it before
+using the configuration under production traffic.
 
 ## Status
 

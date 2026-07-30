@@ -278,6 +278,29 @@ type BenchmarkJob = {
   log_tail: string[];
 };
 
+type TraceSpan = {
+  span_id: string;
+  parent_span_id: string | null;
+  service: string;
+  operation: string;
+  start_offset_ms: number;
+  duration_ms: number;
+  depth: number;
+  error: boolean;
+};
+
+type TraceSearchResult = {
+  trace_id: string;
+  jaeger_url: string;
+  collection_name: string;
+  vector_field: string;
+  top_k: number;
+  hit_count: number;
+  client_latency_ms: number;
+  total_duration_ms: number;
+  spans: TraceSpan[];
+};
+
 const API_BASE_URL = (
   process.env.NEXT_PUBLIC_BENCHMARK_API_URL ?? "http://127.0.0.1:8765"
 ).replace(/\/$/, "");
@@ -1475,6 +1498,100 @@ function apiErrorMessage(payload: unknown, fallback: string) {
   return fallback;
 }
 
+const TRACE_SERVICE_COLORS: Record<string, string> = {
+  "milvus-trace-tester": "#596860",
+  proxy: "#008f5d",
+  querynode: "#2e6fb0",
+  streamingnode: "#6c4ab6",
+  mixcoord: "#9b6a13",
+  datanode: "#b94c3c",
+};
+
+const PUBLIC_TRACE_DEMO: TraceSearchResult = {
+  trace_id: "61a10cf13ea97b69e7b855159210dde7",
+  jaeger_url: "",
+  collection_name: "TraceDemo",
+  vector_field: "vector",
+  top_k: 10,
+  hit_count: 10,
+  client_latency_ms: 3.662,
+  total_duration_ms: 2.489,
+  spans: [
+    { span_id: "17e3635376f0f904", parent_span_id: null, service: "proxy", operation: "milvus.proto.milvus.MilvusService/Search", start_offset_ms: 0, duration_ms: 2.489, depth: 0, error: false },
+    { span_id: "ff692cc18904ac54", parent_span_id: "17e3635376f0f904", service: "proxy", operation: "Proxy-Search", start_offset_ms: 0.113, duration_ms: 2.24, depth: 1, error: false },
+    { span_id: "8df39ef37f948386", parent_span_id: "ff692cc18904ac54", service: "proxy", operation: "SearchTask", start_offset_ms: 0.153, duration_ms: 2.168, depth: 2, error: false },
+    { span_id: "1805ad3101ff9444", parent_span_id: "8df39ef37f948386", service: "proxy", operation: "Proxy-Search-PreExecute", start_offset_ms: 0.157, duration_ms: 0.11, depth: 3, error: false },
+    { span_id: "7ed5a0a253f820db", parent_span_id: "1805ad3101ff9444", service: "proxy", operation: "init search request", start_offset_ms: 0.185, duration_ms: 0.073, depth: 4, error: false },
+    { span_id: "a0fa03ca6e8ebf3c", parent_span_id: "8df39ef37f948386", service: "proxy", operation: "Proxy-Search-Execute", start_offset_ms: 0.269, duration_ms: 2.001, depth: 3, error: false },
+    { span_id: "cda53a5dacca7bd1", parent_span_id: "a0fa03ca6e8ebf3c", service: "proxy", operation: "milvus.proto.query.QueryNode/Search", start_offset_ms: 0.316, duration_ms: 1.937, depth: 4, error: false },
+    { span_id: "29b48c4d0edfa1f3", parent_span_id: "cda53a5dacca7bd1", service: "streamingnode", operation: "milvus.proto.query.QueryNode/Search", start_offset_ms: 0.44, duration_ms: 1.645, depth: 5, error: false },
+    { span_id: "d76a3a5c10391d34", parent_span_id: "29b48c4d0edfa1f3", service: "streamingnode", operation: "Delegator-waitTSafe", start_offset_ms: 0.557, duration_ms: 0, depth: 6, error: false },
+    { span_id: "ed4c93cc25f9ab49", parent_span_id: "29b48c4d0edfa1f3", service: "streamingnode", operation: "schedule", start_offset_ms: 0.601, duration_ms: 0.018, depth: 6, error: false },
+    { span_id: "daf9766fe70f9aa1", parent_span_id: "8df39ef37f948386", service: "proxy", operation: "Proxy-Search-PostExecute", start_offset_ms: 2.274, duration_ms: 0.044, depth: 3, error: false },
+    { span_id: "f451b7bde60c7c66", parent_span_id: "daf9766fe70f9aa1", service: "proxy", operation: "searchReduceOperator", start_offset_ms: 2.288, duration_ms: 0.01, depth: 4, error: false },
+    { span_id: "b07b77ad360eb33b", parent_span_id: "ff692cc18904ac54", service: "proxy", operation: "reduceResults", start_offset_ms: 2.288, duration_ms: 0.006, depth: 2, error: false },
+    { span_id: "895a0f2e9daf9016", parent_span_id: "b07b77ad360eb33b", service: "proxy", operation: "decodeSearchResults", start_offset_ms: 2.289, duration_ms: 0.002, depth: 3, error: false },
+  ],
+};
+
+function TraceWaterfall({ result }: { result: TraceSearchResult }) {
+  const total = Math.max(result.total_duration_ms, 0.001);
+  return (
+    <div className="trace-waterfall">
+      <div className="trace-axis" aria-hidden="true">
+        {[0, 25, 50, 75, 100].map((percent) => (
+          <span key={percent} style={{ left: `${percent}%` }}>
+            {((total * percent) / 100).toFixed(total < 10 ? 2 : 1)} ms
+          </span>
+        ))}
+      </div>
+      <div
+        className="trace-rows"
+        role="img"
+        aria-label={`Trace ${result.trace_id}，共 ${result.spans.length} 个 Span，总耗时 ${result.total_duration_ms} 毫秒`}
+      >
+        {result.spans.map((span) => {
+          const left = Math.min(100, (span.start_offset_ms / total) * 100);
+          const width = Math.max(0.35, Math.min(
+            100 - left,
+            (span.duration_ms / total) * 100,
+          ));
+          const color = TRACE_SERVICE_COLORS[span.service] ?? "#16858c";
+          return (
+            <div className="trace-row" key={span.span_id}>
+              <div
+                className="trace-label"
+                style={{ paddingLeft: `${Math.min(span.depth, 8) * 10}px` }}
+                title={`${span.service} · ${span.operation}`}
+              >
+                <strong>{span.service}</strong>
+                <span>{span.operation}</span>
+              </div>
+              <div className="trace-track">
+                <i
+                  className={span.error ? "trace-bar trace-bar-error" : "trace-bar"}
+                  style={{
+                    left: `${left}%`,
+                    width: `${width}%`,
+                    background: span.error ? undefined : color,
+                  }}
+                  title={`${span.operation}：${span.duration_ms.toFixed(3)} ms，开始于 ${span.start_offset_ms.toFixed(3)} ms`}
+                />
+                <b
+                  className="trace-duration"
+                  style={{ left: `${Math.min(94, left + width)}%` }}
+                >
+                  {span.duration_ms.toFixed(span.duration_ms < 10 ? 3 : 2)} ms
+                </b>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [runs, setRuns] = useState<BenchmarkRun[]>([]);
   const [aggregates, setAggregates] = useState<BenchmarkAggregate[]>([]);
@@ -1514,6 +1631,12 @@ export default function Home() {
   const [snapshotGeneratedAt, setSnapshotGeneratedAt] = useState<string | null>(
     null,
   );
+  const [traceCollection, setTraceCollection] = useState("TraceDemo");
+  const [traceTopK, setTraceTopK] = useState(10);
+  const [traceRunning, setTraceRunning] = useState(false);
+  const [traceError, setTraceError] = useState<string | null>(null);
+  const [traceResult, setTraceResult] = useState<TraceSearchResult | null>(null);
+  const displayedTraceResult = READ_ONLY_DEMO ? PUBLIC_TRACE_DEMO : traceResult;
 
   const loadBenchmarks = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -1706,6 +1829,36 @@ export default function Home() {
       setJobError(reason instanceof Error ? reason.message : "无法启动 Benchmark");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function runTraceSearch(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setTraceRunning(true);
+    setTraceError(null);
+    setTraceResult(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/trace-search`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uri: parameters.uri,
+          database: "default",
+          collection_name: traceCollection,
+          top_k: traceTopK,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(apiErrorMessage(payload, `Trace API 返回 HTTP ${response.status}`));
+      }
+      setTraceResult(payload as TraceSearchResult);
+    } catch (reason) {
+      setTraceError(
+        reason instanceof Error ? reason.message : "无法完成 Trace 查询测试",
+      );
+    } finally {
+      setTraceRunning(false);
     }
   }
 
@@ -2407,6 +2560,122 @@ export default function Home() {
           )}
           </section>
         )}
+
+        <section className="trace-panel">
+            <div className="trace-heading">
+              <div>
+                <p className="eyebrow">DISTRIBUTED TRACE</p>
+                <h2>
+                  {READ_ONLY_DEMO ? "单次查询链路演示" : "单次查询链路测试"}
+                </h2>
+                <p>
+                  {READ_ONLY_DEMO
+                    ? "展示从本地 Milvus Cluster 真实采集的 Search Trace，按统一时间轴观察 Proxy、StreamingNode 与内部操作的调用关系。"
+                    : "从现有 Collection 读取一条真实向量执行 Search，并把本次请求在 Client、Proxy、QueryNode 等节点中的 Span 按时间轴展开。首次测试会自动初始化独立的 TraceDemo，不影响 Benchmark 数据。"}
+                </p>
+              </div>
+              {READ_ONLY_DEMO ? (
+                <div className="trace-demo-badge">
+                  <span>真实采集 · 静态快照</span>
+                  <strong>TraceDemo · TopK 10</strong>
+                </div>
+              ) : (
+                <form className="trace-form" onSubmit={runTraceSearch}>
+                  <label>
+                    <span>Collection</span>
+                    <input
+                      type="text"
+                      value={traceCollection}
+                      onChange={(event) => setTraceCollection(event.target.value)}
+                      pattern="[A-Za-z0-9_]+"
+                      disabled={traceRunning}
+                      required
+                    />
+                  </label>
+                  <label>
+                    <span>TopK</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={2048}
+                      value={traceTopK}
+                      onChange={(event) => setTraceTopK(Number(event.target.value))}
+                      disabled={traceRunning}
+                      required
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    className="run-button"
+                    disabled={traceRunning || jobIsActive}
+                  >
+                    {traceRunning
+                      ? "查询并等待 Trace…"
+                      : jobIsActive
+                        ? "Benchmark 运行中"
+                        : "测试查询"}
+                  </button>
+                </form>
+              )}
+            </div>
+
+            <details className="trace-example">
+              <summary>查看查询示例</summary>
+              <pre><code>{`from pymilvus import MilvusClient
+
+client = MilvusClient(uri="${parameters.uri}")
+row = client.query(
+    collection_name="${traceCollection}",
+    filter="",
+    output_fields=["vector"],
+    limit=1,
+)
+result = client.search(
+    collection_name="${traceCollection}",
+    data=[row[0]["vector"]],
+    anns_field="vector",
+    limit=${traceTopK},
+)`}</code></pre>
+            </details>
+
+            {traceError && (
+              <div className="trace-message trace-message-error" role="alert">
+                <strong>测试未完成</strong>
+                <span>{traceError}</span>
+              </div>
+            )}
+
+            {displayedTraceResult && (
+              <div className="trace-result">
+                <div className="trace-summary">
+                  <div>
+                    <span>端到端 Trace</span>
+                    <strong>{displayedTraceResult.total_duration_ms.toFixed(3)} ms</strong>
+                  </div>
+                  <div>
+                    <span>客户端 Search</span>
+                    <strong>{displayedTraceResult.client_latency_ms.toFixed(3)} ms</strong>
+                  </div>
+                  <div>
+                    <span>Span / 命中</span>
+                    <strong>{displayedTraceResult.spans.length} / {displayedTraceResult.hit_count}</strong>
+                  </div>
+                  {READ_ONLY_DEMO ? (
+                    <span className="trace-static-note">本地 Jaeger 真实采集快照</span>
+                  ) : (
+                    <a
+                      href={displayedTraceResult.jaeger_url}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      在 Jaeger 打开完整 Trace
+                    </a>
+                  )}
+                </div>
+                <TraceWaterfall result={displayedTraceResult} />
+              </div>
+            )}
+          </section>
 
         {error && (
           <section className="notice notice-error" role="alert">

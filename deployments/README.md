@@ -110,6 +110,7 @@ An HTTP `200` response means the Proxy is healthy.
 | Milvus SDK | `http://localhost:19530` |
 | Attu | `http://localhost:3000` |
 | Milvus WebUI | `http://localhost:9091/webui/` |
+| Jaeger Trace UI | `http://localhost:16686` |
 | MinIO Console | `http://localhost:9001` |
 | Prometheus | `http://localhost:9090` |
 | Prometheus targets | `http://localhost:9090/targets` |
