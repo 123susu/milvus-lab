@@ -11,14 +11,19 @@ export async function generateMetadata(): Promise<Metadata> {
   const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "localhost:4173";
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   const origin = `${protocol}://${host}`;
+  const siteBasePath = (
+    process.env.NEXT_PUBLIC_SITE_BASE_PATH ?? "/"
+  ).replace(/\/?$/, "/");
   const title = "MilvusTune · Vector Performance Lab";
-  const description = "从本地 SQLite 汇总 VectorDBBench、QueryNode CPU 与 Vector Index 内存，快速对比 Milvus HNSW 实验。";
+  const description = process.env.NEXT_PUBLIC_READ_ONLY_DEMO === "true"
+    ? "公开展示 VectorDBBench 的 Milvus CPU 索引实验结果，对比构建耗时、P99、Recall 与索引内存。"
+    : "从本地 SQLite 汇总 VectorDBBench、QueryNode CPU 与 Vector Index 内存，快速对比 Milvus HNSW 实验。";
 
   return {
     title,
     description,
-    openGraph: { title, description, images: [{ url: `${origin}/og.png`, width: 1200, height: 630 }] },
-    twitter: { card: "summary_large_image", title, description, images: [`${origin}/og.png`] },
+    openGraph: { title, description, images: [{ url: `${origin}${siteBasePath}og.png`, width: 1200, height: 630 }] },
+    twitter: { card: "summary_large_image", title, description, images: [`${origin}${siteBasePath}og.png`] },
   };
 }
 

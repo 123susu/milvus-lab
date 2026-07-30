@@ -122,6 +122,13 @@ type BenchmarkAggregateListResponse = {
   offset: number;
 };
 
+type PublicBenchmarkSnapshot = {
+  generated_at: string;
+  runs: BenchmarkListResponse;
+  aggregates: BenchmarkAggregateListResponse;
+  profiles: IndexProfile[];
+};
+
 type BenchmarkRow = {
   run: BenchmarkRun;
   stage: ConcurrencyStage;
@@ -246,6 +253,12 @@ type BenchmarkJob = {
 const API_BASE_URL = (
   process.env.NEXT_PUBLIC_BENCHMARK_API_URL ?? "http://127.0.0.1:8765"
 ).replace(/\/$/, "");
+const READ_ONLY_DEMO =
+  process.env.NEXT_PUBLIC_READ_ONLY_DEMO === "true";
+const SITE_BASE_PATH = (
+  process.env.NEXT_PUBLIC_SITE_BASE_PATH ?? "/"
+).replace(/\/?$/, "/");
+const PUBLIC_SNAPSHOT_URL = `${SITE_BASE_PATH}benchmark-snapshot.json`;
 
 const DEFAULT_PARAMETERS: BenchmarkParameters = {
   command: "milvushnsw",
@@ -1150,9 +1163,30 @@ export default function Home() {
   const [expandedIndexGroups, setExpandedIndexGroups] = useState<string[]>([]);
   const [analysisIndexType, setAnalysisIndexType] = useState("");
   const [analysisParameter, setAnalysisParameter] = useState("");
+  const [snapshotGeneratedAt, setSnapshotGeneratedAt] = useState<string | null>(
+    null,
+  );
 
   const loadBenchmarks = useCallback(async (signal?: AbortSignal) => {
     try {
+      if (READ_ONLY_DEMO) {
+        const response = await fetch(PUBLIC_SNAPSHOT_URL, {
+          cache: "no-store",
+          signal,
+        });
+        if (!response.ok) {
+          throw new Error(`公开快照返回 HTTP ${response.status}`);
+        }
+        const snapshot = (await response.json()) as PublicBenchmarkSnapshot;
+        setRuns(snapshot.runs.items);
+        setTotal(snapshot.runs.total);
+        setAggregates(snapshot.aggregates.items);
+        setAggregateTotal(snapshot.aggregates.total);
+        setProfiles(snapshot.profiles);
+        setSnapshotGeneratedAt(snapshot.generated_at);
+        setError(null);
+        return;
+      }
       const [rawResponse, aggregateResponse, profileResponse] = await Promise.all([
         fetch(`${API_BASE_URL}/api/benchmarks?limit=100&offset=0`, {
           cache: "no-store",
@@ -1181,6 +1215,7 @@ export default function Home() {
       setAggregates(aggregatePayload.items);
       setAggregateTotal(aggregatePayload.total);
       setProfiles(profilePayload);
+      setSnapshotGeneratedAt(null);
       setError(null);
     } catch (reason) {
       if (reason instanceof DOMException && reason.name === "AbortError") {
@@ -1201,6 +1236,7 @@ export default function Home() {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
       void loadBenchmarks(controller.signal);
+      if (READ_ONLY_DEMO) return;
       void fetch(`${API_BASE_URL}/api/benchmark-jobs`, {
         cache: "no-store",
         signal: controller.signal,
@@ -1223,6 +1259,7 @@ export default function Home() {
   }, [loadBenchmarks]);
 
   useEffect(() => {
+    if (READ_ONLY_DEMO) return;
     if (!job || !["queued", "running", "cancelling"].includes(job.status)) {
       return;
     }
@@ -1625,10 +1662,12 @@ export default function Home() {
         <div className={`status ${error ? "status-error" : ""}`}>
           <i />
           {error
-            ? "本地 API 未连接"
+            ? READ_ONLY_DEMO ? "公开快照读取失败" : "本地 API 未连接"
             : loading
-              ? "正在连接本地 API"
-              : `${total} 次实验 · SQLite`}
+              ? READ_ONLY_DEMO ? "正在读取公开快照" : "正在连接本地 API"
+              : READ_ONLY_DEMO
+                ? `${total} 次实验 · 公开只读`
+                : `${total} 次实验 · SQLite`}
         </div>
       </header>
 
@@ -1638,18 +1677,30 @@ export default function Home() {
             <p className="eyebrow">VECTOR INDEX BENCHMARK</p>
             <h1>Milvus CPU 索引实验台</h1>
             <p className="subtitle">
-              配置并运行 VectorDBBench，对比不同索引参数下的构建耗时、
+              {READ_ONLY_DEMO ? "查看" : "配置并运行"} VectorDBBench，
+              对比不同索引参数下的构建耗时、
               P99、Recall 与 Vector Index 内存。
             </p>
           </div>
           <div className="scope">
             <span>当前数据源</span>
-            <strong>VectorDBBench + Prometheus</strong>
-            <small>{API_BASE_URL}</small>
+            <strong>
+              {READ_ONLY_DEMO
+                ? "VectorDBBench 公开实验快照"
+                : "VectorDBBench + Prometheus"}
+            </strong>
+            <small>
+              {READ_ONLY_DEMO
+                ? snapshotGeneratedAt
+                  ? `更新于 ${new Date(snapshotGeneratedAt).toLocaleString("zh-CN")}`
+                  : "只读数据，不连接实验集群"
+                : API_BASE_URL}
+            </small>
           </div>
         </section>
 
-        <section className="runner-panel">
+        {!READ_ONLY_DEMO && (
+          <section className="runner-panel">
           <div className="runner-copy">
             <p className="eyebrow">RUN CPU INDEX BENCHMARK</p>
             <h2>发起一组新的向量索引实验</h2>
@@ -1997,13 +2048,22 @@ export default function Home() {
               )}
             </div>
           )}
-        </section>
+          </section>
+        )}
 
         {error && (
           <section className="notice notice-error" role="alert">
             <div>
-              <strong>无法连接本地指标 API</strong>
-              <span>{error}。请先启动 FastAPI 服务，再刷新数据。</span>
+              <strong>
+                {READ_ONLY_DEMO
+                  ? "无法读取公开实验快照"
+                  : "无法连接本地指标 API"}
+              </strong>
+              <span>
+                {READ_ONLY_DEMO
+                  ? `${error}。请稍后刷新页面。`
+                  : `${error}。请先启动 FastAPI 服务，再刷新数据。`}
+              </span>
             </div>
             <button type="button" onClick={refreshBenchmarks}>
               重试
@@ -2063,7 +2123,9 @@ export default function Home() {
                 onClick={refreshBenchmarks}
                 disabled={refreshing}
               >
-                {refreshing ? "刷新中…" : "刷新数据"}
+                {refreshing
+                  ? "刷新中…"
+                  : READ_ONLY_DEMO ? "刷新快照" : "刷新数据"}
               </button>
             </div>
           </div>
@@ -2071,7 +2133,9 @@ export default function Home() {
           {loading ? (
             <div className="empty-state" role="status">
               <span className="loading-dot" />
-              正在读取本地 SQLite 指标…
+              {READ_ONLY_DEMO
+                ? "正在读取公开实验快照…"
+                : "正在读取本地 SQLite 指标…"}
             </div>
           ) : (
             viewMode === "index"
@@ -2382,8 +2446,16 @@ export default function Home() {
         </section>
 
         <footer>
-          <span>本地只读数据源 · FastAPI / SQLite</span>
-          <span>刷新页面不会重新执行压测</span>
+          <span>
+            {READ_ONLY_DEMO
+              ? "公开只读数据 · VectorDBBench 实验快照"
+              : "本地只读数据源 · FastAPI / SQLite"}
+          </span>
+          <span>
+            {READ_ONLY_DEMO
+              ? "不连接 Milvus 集群，不提供实验执行入口"
+              : "刷新页面不会重新执行压测"}
+          </span>
         </footer>
       </div>
     </main>

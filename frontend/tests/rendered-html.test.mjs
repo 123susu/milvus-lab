@@ -32,10 +32,20 @@ test("server-renders the MilvusTune local metrics shell", async () => {
   assert.match(html, /<title>MilvusTune · Vector Performance Lab<\/title>/i);
   assert.match(html, /MilvusTune/);
   assert.match(html, /Milvus CPU 索引实验台/);
-  assert.match(html, /配置并运行 VectorDBBench/);
-  assert.match(html, /正在读取本地 SQLite 指标/);
+  assert.match(
+    html,
+    process.env.NEXT_PUBLIC_READ_ONLY_DEMO === "true"
+      ? /查看.*VectorDBBench/s
+      : /配置并运行.*VectorDBBench/s,
+  );
+  assert.match(html, /正在读取(本地 SQLite 指标|公开实验快照)/);
   assert.doesNotMatch(html, /压测完成|指标合并|本地归档/);
   assert.doesNotMatch(html, /M32 实验|651\.41|Your site is taking shape/);
+  if (process.env.NEXT_PUBLIC_READ_ONLY_DEMO === "true") {
+    assert.match(html, /公开只读/);
+    assert.match(html, /VectorDBBench 公开实验快照/);
+    assert.doesNotMatch(html, /运行 Benchmark|取消任务|发起一组新的向量索引实验/);
+  }
 });
 
 test("wires the page to the local benchmark API with resilient states", async () => {
@@ -46,6 +56,10 @@ test("wires the page to the local benchmark API with resilient states", async ()
 
   assert.match(page, /"use client"/);
   assert.match(page, /NEXT_PUBLIC_BENCHMARK_API_URL/);
+  assert.match(page, /NEXT_PUBLIC_READ_ONLY_DEMO/);
+  assert.match(page, /benchmark-snapshot\.json/);
+  assert.match(page, /公开只读数据 · VectorDBBench 实验快照/);
+  assert.match(page, /\{!READ_ONLY_DEMO && \(/);
   assert.match(page, /\/api\/benchmarks\?limit=100&offset=0/);
   assert.match(page, /\/api\/benchmark-aggregates\?limit=100&offset=0/);
   assert.match(page, /\/api\/benchmark-profiles/);
