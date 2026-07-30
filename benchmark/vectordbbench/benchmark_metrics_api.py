@@ -38,6 +38,7 @@ from metrics.tracing import (
 )
 from metrics.tuning_agent import (
     BenchmarkTuningAgent,
+    TuningAgentBenchmarkConflictError,
     TuningAgentConfigurationError,
     TuningAgentDataError,
     TuningAgentError,
@@ -74,6 +75,7 @@ class HealthResponse(ApiModel):
     database: str
     benchmark_run_count: int
     active_job_id: str | None
+    agent_executor_mode: str = "single-job-serial-concurrent-v3"
 
 
 class ConcurrencyStageResponse(ApiModel):
@@ -251,6 +253,10 @@ class TuningAgentResponse(ApiModel):
     model: str
     answer: str
     tools_used: list[str]
+    history_configuration_count: int
+    benchmark_tool_call_count: int
+    benchmark_run_count: int
+    benchmark_runs: list[dict[str, Any]]
 
 
 class BenchmarkCommonParametersRequest(ApiModel):
@@ -676,6 +682,7 @@ def health() -> HealthResponse:
         database=str(database_path()),
         benchmark_run_count=count,
         active_job_id=JOB_MANAGER.active_job_id,
+        agent_executor_mode="single-job-serial-concurrent-v3",
     )
 
 
@@ -888,7 +895,10 @@ def recommend_index_configuration(
     request: TuningAgentRequest,
 ) -> TuningAgentResponse:
     try:
-        result = BenchmarkTuningAgent(database_path()).recommend(
+        result = BenchmarkTuningAgent(
+            database_path(),
+            JOB_MANAGER,
+        ).recommend(
             request.recall_target
         )
         return TuningAgentResponse(
@@ -899,6 +909,8 @@ def recommend_index_configuration(
         raise HTTPException(status_code=503, detail=str(error)) from error
     except TuningAgentDataError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
+    except TuningAgentBenchmarkConflictError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     except TuningAgentError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
 

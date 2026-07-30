@@ -176,8 +176,21 @@ GET /docs
 ```
 
 The Recall tuning endpoint is a small Deep Agents agent running on LangGraph.
-Its only benchmark-data tool is a constrained, read-only SQLite aggregate
-query; it cannot execute arbitrary SQL, start a benchmark, or update records.
+Before the agent runs, a deterministic LangGraph node reads aggregate SQLite
+history and infers the retained VDBBench Collection configuration from the
+latest raw run. The agent's only business tool is `run_benchmark`.
+
+That tool runs a search-only benchmark with `drop_old=false`, `load=false`,
+`search_serial=true`, and `num_concurrency=1`. The serial search is required to
+calculate Recall; the concurrent stage remains a single-concurrency latency
+measurement. They run as two isolated search-only jobs because VectorDBBench
+stops the serial runner when a concurrent search finishes. It locks the index type and all
+build-time parameters to the retained Collection and only accepts its search
+parameters (for example `ef_search` or `nprobe`). Calls are serialized and
+limited to three per recommendation request. The Collection must still match
+the latest SQLite run; if it was rebuilt externally, run or record a matching
+baseline before starting the agent.
+
 The agent reuses the OpenAI-compatible Qwen configuration that was previously
 used by `run_benchmark.ps1`: `qwen-plus`, the Aliyun Bailian compatible-mode
 endpoint, and the `DASHSCOPE_API_KEY` environment variable. Set the key before
@@ -186,6 +199,25 @@ starting the API:
 ```powershell
 $env:DASHSCOPE_API_KEY = "<your-api-key>"
 ```
+
+To trace the LangGraph and Deep Agent execution in LangSmith, set these
+server-side variables before starting the API. Tracing is disabled by default:
+
+You can also directly edit `benchmark/vectordbbench/config/langsmith.yml`:
+
+```powershell
+$env:MILVUS_LANGSMITH_TRACING = "true"
+$env:MILVUS_LANGSMITH_API_KEY = "<your-langsmith-api-key>"
+$env:MILVUS_LANGSMITH_PROJECT = "milvus-tune-agent"
+# Optional: self-hosted or regional endpoint
+# $env:MILVUS_LANGSMITH_ENDPOINT = "https://api.smith.langchain.com"
+```
+
+Each trace is tagged with `langgraph`, `deep-agent`, and
+`recall-optimization`, and includes the Recall target and model as metadata.
+The LangSmith key is read only by the backend and is never returned to the
+frontend or written to SQLite. The standard `LANGSMITH_*` variables are also
+honored.
 
 The defaults can be overridden with `MILVUS_TUNING_AGENT_MODEL`,
 `MILVUS_TUNING_AGENT_BASE_URL`, and

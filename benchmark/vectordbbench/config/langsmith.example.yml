@@ -1,0 +1,6 @@
+# Copy this file to langsmith.yml and fill in the local API key.
+langsmith:
+  tracing: true
+  api_key: ""
+  project: "milvus-tune-agent"
+  endpoint: "https://api.smith.langchain.com"

@@ -34,3 +34,6 @@ __pycache__/
 # Generated benchmark data
 data/vectordbbench/
 results/
+
+# Local observability credentials
+benchmark/vectordbbench/config/langsmith.yml

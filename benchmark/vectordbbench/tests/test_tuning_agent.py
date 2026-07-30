@@ -3,10 +3,15 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 from metrics.models import BenchmarkRunMetrics, ConcurrencyStageMetrics
 from metrics.repository import BenchmarkMetricsRepository
-from metrics.tuning_agent import query_candidate_data
+from metrics.tuning_agent import (
+    build_benchmark_parameters,
+    query_candidate_data,
+    query_current_collection_config,
+)
 
 
 def benchmark_run(
@@ -44,7 +49,7 @@ def benchmark_run(
         load_concurrency=4,
         concurrency_duration_seconds=30,
         concurrency_timeout_seconds=3600,
-        executed_stages=["search_concurrent"],
+        executed_stages=["search_serial", "search_concurrent"],
         recall=recall,
         insert_duration_seconds=10,
         optimize_duration_seconds=20,
@@ -105,6 +110,102 @@ class TuningAgentQueryTest(unittest.TestCase):
             result["near_misses"][0]["recall_mean"],
             0.94,
         )
+
+    def test_reads_current_collection_config_from_latest_run(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            database = Path(temporary) / "metrics.sqlite3"
+            repository = BenchmarkMetricsRepository(database)
+            repository.save_all(
+                [
+                    benchmark_run(
+                        "current-index",
+                        recall=0.96,
+                        p99_ms=8,
+                        memory_mib=280,
+                        m=24,
+                        ef_search=192,
+                    )
+                ]
+            )
+
+            result = query_current_collection_config(database)
+
+        self.assertEqual(result["command"], "milvushnsw")
+        self.assertEqual(result["index_parameters"]["m"], 24)
+        self.assertEqual(result["search_parameters"], {"ef_search": 192})
+        self.assertEqual(result["allowed_search_parameters"], ["ef_search"])
+
+    def test_builds_search_only_single_concurrency_job(self) -> None:
+        project_root = Path(__file__).resolve().parents[3]
+        manager = SimpleNamespace(
+            base_config_path=(
+                project_root
+                / "benchmark"
+                / "vectordbbench"
+                / "config"
+                / "milvushnsw.yml"
+            )
+        )
+        current_config = {
+            "command": "milvushnsw",
+            "case_type": "Performance1536D50K",
+            "top_k": 100,
+            "num_shards": 1,
+            "replica_number": 1,
+            "load_concurrency": 4,
+            "concurrency_duration": 30,
+            "concurrency_timeout": 3600,
+            "db_label": "test-cluster",
+            "index_parameters": {"m": 24, "ef_construction": 128},
+            "allowed_search_parameters": ["ef_search"],
+        }
+
+        parameters = build_benchmark_parameters(
+            manager,
+            current_config,
+            {"ef_search": 256},
+        )
+
+        self.assertFalse(parameters.drop_old)
+        self.assertFalse(parameters.load)
+        self.assertTrue(parameters.search_serial)
+        self.assertTrue(parameters.search_concurrent)
+        self.assertEqual(parameters.num_concurrency, (1,))
+        self.assertEqual(parameters.command, "milvushnsw")
+        self.assertEqual(parameters.index_parameters["m"], 24)
+        self.assertEqual(parameters.index_parameters["ef_search"], 256)
+
+    def test_rejects_build_parameter_from_agent_tool(self) -> None:
+        project_root = Path(__file__).resolve().parents[3]
+        manager = SimpleNamespace(
+            base_config_path=(
+                project_root
+                / "benchmark"
+                / "vectordbbench"
+                / "config"
+                / "milvushnsw.yml"
+            )
+        )
+        current_config = {
+            "command": "milvushnsw",
+            "case_type": "Performance1536D50K",
+            "top_k": 100,
+            "num_shards": 1,
+            "replica_number": 1,
+            "load_concurrency": 4,
+            "concurrency_duration": 30,
+            "concurrency_timeout": 3600,
+            "db_label": "test-cluster",
+            "index_parameters": {"m": 24, "ef_construction": 128},
+            "allowed_search_parameters": ["ef_search"],
+        }
+
+        with self.assertRaisesRegex(ValueError, "不允许 m"):
+            build_benchmark_parameters(
+                manager,
+                current_config,
+                {"ef_search": 256, "m": 16},
+            )
 
 
 if __name__ == "__main__":

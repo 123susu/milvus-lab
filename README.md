@@ -116,19 +116,22 @@ Prometheus；索引内存在本次结果写入 SQLite 前从 Milvus Cluster 即�
 
 Agent 使用 **LangGraph + Deep Agents + Qwen**。用户输入 Recall 目标后，它会：
 
-1. 调用受限的 SQLite 聚合查询工具；
+1. 由 LangGraph 前置节点读取 SQLite 聚合历史，并从最近一次 Run 推断当前
+   VDBBench Collection 的索引与构建参数；
 2. 找出达到目标的配置和最接近目标的未达标配置；
-3. 在达标配置中优先比较 P99，再比较索引内存；
-4. 返回推荐配置、数据依据和下一轮参数搜索建议。
+3. 根据结果决定是否调用查询压测，并在每次结果返回后选择下一组搜索参数；
+4. 最多串行执行 3 次、并发固定为 1，最终返回推荐配置、实验依据和后续建议。
 
 当前 Agent 只有一个业务工具：
 
 ```text
-query_benchmark_candidates
+run_benchmark
 ```
 
-它不能执行任意 SQL、修改数据库或自动发起压测。大模型只能基于工具返回的数据
-生成建议；如果没有调用 SQLite 工具，后端会拒绝返回建议。
+SQLite 读取不暴露给大模型，而是在进入 Agent 前由确定性的 LangGraph 节点完成。
+`run_benchmark` 固定 `drop_old=false`、`load=false`，不会重建 Collection 或
+重新导入数据；它只允许修改当前索引的搜索参数，例如 HNSW 的 `ef_search` 或
+IVF 的 `nprobe`。`M`、`efConstruction`、`nlist` 和量化类型等构建参数保持不变。
 
 默认复用阿里云百炼 OpenAI-compatible API：
 
@@ -196,6 +199,20 @@ docker start attu
 ```powershell
 $env:DASHSCOPE_API_KEY = "<your-api-key>"
 ```
+
+如需查看 LangGraph、Deep Agent 和 `run_benchmark` 的完整调用链路，可以在后端
+启动前开启 LangSmith：
+
+也可以直接修改 `benchmark/vectordbbench/config/langsmith.yml`，配置文件参数会被
+环境变量覆盖。
+
+```powershell
+$env:MILVUS_LANGSMITH_TRACING = "true"
+$env:MILVUS_LANGSMITH_API_KEY = "<your-langsmith-api-key>"
+$env:MILVUS_LANGSMITH_PROJECT = "milvus-tune-agent"
+```
+
+LangSmith 密钥只保留在后端环境变量中；未开启 tracing 时不会上报。
 
 启动服务：
 
