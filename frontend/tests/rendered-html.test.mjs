@@ -62,7 +62,11 @@ test("wires the page to the local benchmark API with resilient states", async ()
   assert.match(page, /NEXT_PUBLIC_READ_ONLY_DEMO/);
   assert.match(page, /benchmark-snapshot\.json/);
   assert.match(page, /PUBLIC_AGENT_DEMO/);
-  assert.match(page, /query_benchmark_candidates/);
+  assert.match(page, /run_benchmark/);
+  assert.match(page, /benchmark_tool_call_count: 3/);
+  assert.match(page, /nprobe=64，Recall 96\.37%/);
+  assert.doesNotMatch(page, /Agent 唯一业务工具/);
+  assert.match(page, /不会重建 Collection 或重新导入数据/);
   assert.match(page, /\/api\/tuning-agent\/recommend/);
   assert.match(page, /公开只读数据 · VectorDBBench 实验快照/);
   assert.match(page, /\{!READ_ONLY_DEMO && \(/);

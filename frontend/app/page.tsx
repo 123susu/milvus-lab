@@ -306,6 +306,10 @@ type TuningAgentResult = {
   model: string;
   answer: string;
   tools_used: string[];
+  history_configuration_count: number;
+  benchmark_tool_call_count: number;
+  benchmark_run_count: number;
+  benchmark_runs: Array<Record<string, unknown>>;
 };
 
 const API_BASE_URL = (
@@ -320,25 +324,59 @@ const PUBLIC_SNAPSHOT_URL = `${SITE_BASE_PATH}benchmark-snapshot.json`;
 const PUBLIC_AGENT_DEMO: TuningAgentResult = {
   recall_target: 0.95,
   model: "qwen-plus",
-  tools_used: ["query_benchmark_candidates"],
-  answer: `目标判断
-- 当前实验数据中有 8 组配置达到 95% Recall 目标。
+  tools_used: ["run_benchmark"],
+  history_configuration_count: 33,
+  benchmark_tool_call_count: 3,
+  benchmark_run_count: 3,
+  benchmark_runs: [
+    {
+      index_type: "IVF_SQ8",
+      search_parameters: { nprobe: 32 },
+      recall: 0.9208,
+      p99_ms: 10.3,
+      qps: 96.8,
+    },
+    {
+      index_type: "IVF_SQ8",
+      search_parameters: { nprobe: 64 },
+      recall: 0.9637,
+      p99_ms: 12.84,
+      qps: 78.5,
+    },
+    {
+      index_type: "IVF_SQ8",
+      search_parameters: { nprobe: 128 },
+      recall: 0.9814,
+      p99_ms: 18.62,
+      qps: 54.1,
+    },
+  ],
+  answer: `目标与历史基线
+- Recall 目标为 95%，当前保留索引为 IVF_SQ8，构建参数 nlist=256。
+- 历史配置 nprobe=32 的 Recall 为 92.08%，尚未达到目标。
 
-推荐配置
-- 索引类型：HNSW
-- 索引参数：M=16，efConstruction=128
-- 搜索参数：efSearch=128
-- 当前均值：Recall 96.04%，P99 7.13 ms，Vector Index 300.04 MiB
+压测计划与执行结果
+- 第 1 次：nprobe=32，Recall 92.08%，P99 10.30 ms，QPS 96.8，未达标。
+- 第 2 次：nprobe=64，Recall 96.37%，P99 12.84 ms，QPS 78.5，达到目标。
+- 第 3 次：nprobe=128，Recall 98.14%，P99 18.62 ms，QPS 54.1，达到目标。
+
+最终推荐配置
+- 索引类型：IVF_SQ8
+- 构建参数：nlist=256
+- 搜索参数：nprobe=64
+- 实验结果：Recall 96.37%，P99 12.84 ms，QPS 78.5
 
 推荐依据
-- 在当前达到 Recall 目标的配置中，这组配置的 P99 最低。
-- Recall 比目标高 1.04 个百分点，保留了一定余量。
-- 索引内存数据有效；结论仅代表当前数据集、TopK、并发和集群环境。
+- nprobe=64 是本轮达到 Recall 目标的最小搜索范围。
+- 相比 nprobe=128，Recall 仅降低 1.77 个百分点，但 P99 降低 5.78 ms，QPS 提升约 45%。
+- 搜索参数不会改变已构建索引的内存占用，本轮重点比较 Recall 与查询性能。
 
 后续调优建议
-- 固定 M=16、efConstruction=128，下一轮只调整 efSearch，测试 96、112、128、144。
-- 重点观察 Recall 是否持续达到 95%，以及降低 efSearch 后 P99 能否继续下降。
-- 如果 Recall 波动低于目标，再提高 efSearch；只有搜索参数无法满足目标时，再提高 M 或 efConstruction，并同步观察索引内存和构建耗时。`,
+- 固定 nlist=256，在 nprobe=48、56、64 之间补充实验，寻找满足 Recall 目标的更低延迟边界。
+- 对候选配置重复运行 3 次，使用均值和标准差验证结果稳定性。
+
+说明
+- 以上内容为 GitHub Pages 静态 Mock，用于展示 Agent 的决策与工具调用过程，不会发起真实压测。`,
 };
 
 const DEFAULT_PARAMETERS: BenchmarkParameters = {
@@ -1901,17 +1939,23 @@ export default function Home() {
 
   async function runTuningAgent(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (
+      !Number.isFinite(agentRecallTarget)
+      || agentRecallTarget <= 0
+      || agentRecallTarget > 100
+    ) {
+      setAgentError("Recall 目标必须大于 0%，且不超过 100%");
+      return;
+    }
+    const confirmed = window.confirm(
+      "Agent 会先读取 SQLite 历史数据，并可能在当前 VDBBench Collection 上测试最多 3 组搜索参数。每组只提交一个 Benchmark 任务，在同一任务中依次执行 Recall serial search 和并发 1 的 P99 查询，不会重建 Collection 或重新导入数据。是否继续？",
+    );
+    if (!confirmed) return;
+
     setAgentRunning(true);
     setAgentError(null);
     setAgentResult(null);
     try {
-      if (
-        !Number.isFinite(agentRecallTarget)
-        || agentRecallTarget <= 0
-        || agentRecallTarget > 100
-      ) {
-        throw new Error("Recall 目标必须大于 0%，且不超过 100%");
-      }
       const response = await fetch(`${API_BASE_URL}/api/tuning-agent/recommend`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2150,7 +2194,7 @@ export default function Home() {
   const jobIsActive = job
     ? ["queued", "running", "cancelling"].includes(job.status)
     : false;
-  const formDisabled = jobIsActive || submitting;
+  const formDisabled = jobIsActive || submitting || agentRunning;
   const selectedProfile =
     profiles.find((profile) => profile.command === selectedCommand)
     ?? FALLBACK_INDEX_PROFILES[0];
@@ -2645,13 +2689,13 @@ export default function Home() {
                 </h2>
                 <p>
                   {READ_ONLY_DEMO
-                    ? "展示 Agent 基于公开实验快照生成的一次真实建议；公开页面不会连接本地 SQLite，也不会调用模型接口。"
-                    : "输入目标 Recall，Agent 只读查询当前 SQLite 聚合实验，推荐已有配置并给出下一轮参数调优方向。当前不会自动启动压测或修改数据。"}
+                    ? "展示 Agent 基于公开实验快照生成的建议；公开页面不会连接本地 SQLite、调用模型或执行压测。"
+                    : "前置节点先读取 SQLite 历史和当前索引配置，Agent 再按 Recall 目标决定是否调用查询压测。每次包含 Recall 所需的 serial search，并发查询固定为 1，最多 3 次，不重建 Collection。"}
                 </p>
               </div>
               {READ_ONLY_DEMO ? (
                 <div className="agent-demo-badge">
-                  <span>真实结果 · 静态快照</span>
+                  <span>交互流程 · 静态 Mock</span>
                   <strong>Recall 目标 95% · qwen-plus</strong>
                 </div>
               ) : (
@@ -2668,7 +2712,7 @@ export default function Home() {
                         onChange={(event) =>
                           setAgentRecallTarget(Number(event.target.value))
                         }
-                        disabled={agentRunning}
+                        disabled={agentRunning || jobIsActive}
                         required
                       />
                       <b>%</b>
@@ -2680,23 +2724,13 @@ export default function Home() {
                     disabled={agentRunning || jobIsActive}
                   >
                     {agentRunning
-                      ? "正在分析实验数据…"
+                      ? "Agent 调优中…"
                       : jobIsActive
                         ? "Benchmark 运行中"
                         : "生成调优建议"}
                   </button>
                 </form>
               )}
-            </div>
-
-            <div className="agent-scope">
-              <span>唯一数据工具</span>
-              <strong>只读 SQLite 聚合查询</strong>
-              <small>
-                {READ_ONLY_DEMO
-                  ? "公开页面仅展示结果快照 · 不包含数据库或模型密钥"
-                  : "不开放任意 SQL · 不触发压测 · 不修改实验记录"}
-              </small>
             </div>
 
             {!READ_ONLY_DEMO && agentError && (
@@ -2716,7 +2750,13 @@ export default function Home() {
                     模型 <b>{displayedAgentResult.model}</b>
                   </span>
                   <span>
-                    工具 <b>{displayedAgentResult.tools_used.join(", ")}</b>
+                    工具 <b>{displayedAgentResult.tools_used.join(", ") || "未调用"}</b>
+                  </span>
+                  <span>
+                    历史配置 <b>{displayedAgentResult.history_configuration_count}</b>
+                  </span>
+                  <span>
+                    查询压测 <b>{displayedAgentResult.benchmark_run_count}/{displayedAgentResult.benchmark_tool_call_count}</b>
                   </span>
                 </div>
                 <div className="agent-answer">{displayedAgentResult.answer}</div>
@@ -2751,7 +2791,7 @@ export default function Home() {
                       value={traceCollection}
                       onChange={(event) => setTraceCollection(event.target.value)}
                       pattern="[A-Za-z0-9_]+"
-                      disabled={traceRunning}
+                      disabled={traceRunning || agentRunning}
                       required
                     />
                   </label>
@@ -2763,16 +2803,18 @@ export default function Home() {
                       max={2048}
                       value={traceTopK}
                       onChange={(event) => setTraceTopK(Number(event.target.value))}
-                      disabled={traceRunning}
+                      disabled={traceRunning || agentRunning}
                       required
                     />
                   </label>
                   <button
                     type="submit"
                     className="run-button"
-                    disabled={traceRunning || jobIsActive}
+                    disabled={traceRunning || jobIsActive || agentRunning}
                   >
-                    {traceRunning
+                    {agentRunning
+                      ? "Agent 调优中"
+                      : traceRunning
                       ? "查询并等待 Trace…"
                       : jobIsActive
                         ? "Benchmark 运行中"
