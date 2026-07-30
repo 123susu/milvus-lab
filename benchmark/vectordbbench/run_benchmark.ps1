@@ -104,7 +104,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if ($DryRun) {
-    Write-Host "Dry run completed; result formatting and LLM report were skipped."
+    Write-Host "Dry run completed; result formatting and SQLite metric collection were skipped."
     return
 }
 
@@ -146,15 +146,18 @@ if ($newResultFiles.Count -eq 0) {
 $latestResultFile = $newResultFiles |
     Sort-Object LastWriteTime -Descending |
     Select-Object -First 1
-$reportGenerator = Join-Path $PSScriptRoot "generate_llm_report.py"
+$metricsCollector = Join-Path $PSScriptRoot "collect_benchmark_metrics.py"
+$metricsDatabase = Join-Path $env:RESULTS_LOCAL_DIR "benchmark_metrics.sqlite3"
 
-& $pythonExecutable $reportGenerator `
+& $pythonExecutable $metricsCollector `
     --config $resolvedConfigFile `
-    --result $latestResultFile.FullName
+    --result $latestResultFile.FullName `
+    --log $env:LOG_FILE `
+    --database $metricsDatabase
 
 if ($LASTEXITCODE -ne 0) {
     Write-Warning (
-        "Benchmark succeeded, but the LLM report was not generated. " +
-        "Complete the _report settings and API-key environment variable, then run again."
+        "Benchmark succeeded, but its metrics were not saved to SQLite. " +
+        "Check the benchmark log and Prometheus metric settings, then run again."
     )
 }

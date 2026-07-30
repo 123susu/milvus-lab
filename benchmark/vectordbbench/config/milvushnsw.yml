@@ -6,16 +6,15 @@
 # Validate without running:
 #   .\benchmark\vectordbbench\run_benchmark.ps1 -Command milvushnsw -DryRun
 
-# LLM report generation. Fill base_url and model yourself. Store the actual
-# API key in the environment variable named by api_key_env, never in this file.
-_report:
-  enabled: false
-  base_url: "https://ws-ulvbraz6azwp77bu.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
-  model: "qwen-plus"
-  api_key_env: DASHSCOPE_API_KEY
-  language: 简体中文
-  temperature: 0.2
-  timeout_seconds: 120
+# SQLite metric collection. QueryNode CPU comes from the Prometheus data source
+# used by Grafana and is limited to each concurrent search stage window.
+_metrics:
+  prometheus_url: http://localhost:9090
+  timezone: "+08:00"
+  querynode_cpu_limit_cores: 2
+  query_range_step_seconds: 1
+  rate_window: 10s
+  timeout_seconds: 15
 
 milvushnsw:
   # Milvus connection
@@ -33,8 +32,8 @@ milvushnsw:
 
   # Search workload
   k: 100
-  concurrency_duration: 10
-  num_concurrency: "1,5,10,20"
+  concurrency_duration: 30
+  num_concurrency: "1"
   concurrency_timeout: 3600
 
   # HNSW index and search parameters

@@ -28,7 +28,8 @@
       "targets": [
         {"editorMode": "code", "expr": "sum(milvus_querynode_read_task_concurrency)", "legendFormat": "Read task concurrency", "range": true, "refId": "A"},
         {"editorMode": "code", "expr": "sum(milvus_querynode_pool_active_threads)", "legendFormat": "Active pool threads", "range": true, "refId": "B"},
-        {"editorMode": "code", "expr": "sum(milvus_querynode_pool_queue_depth)", "legendFormat": "Pool queue depth", "range": true, "refId": "C"}
+        {"editorMode": "code", "expr": "sum(milvus_querynode_pool_queue_depth)", "legendFormat": "Pool queue depth", "range": true, "refId": "C"},
+        {"editorMode": "code", "expr": "sum(milvus_querynode_read_task_ready_len)", "legendFormat": "Ready tasks", "range": true, "refId": "D"}
       ],
       "title": "QueryNode Concurrency and Queue", "type": "timeseries"
     },
@@ -55,9 +56,53 @@
         {"editorMode": "code", "expr": "sum(rate(hnsw_search_hops_sum[$__rate_interval])) / clamp_min(sum(rate(hnsw_search_hops_count[$__rate_interval])), 1)", "legendFormat": "Average hops/search", "range": true, "refId": "B"}
       ],
       "title": "HNSW Search Work", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "short", "color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24}, "id": 7,
+      "options": {"legend": {"calcs": ["lastNotNull", "max", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "sum(milvus_proxy_queue_task_num{component=\"proxy\"})", "legendFormat": "Proxy tasks in queue", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "sum(milvus_querynode_pool_queue_depth{component=\"querynode\"})", "legendFormat": "QueryNode pool queue", "range": true, "refId": "B"},
+        {"editorMode": "code", "expr": "sum(milvus_querynode_read_task_ready_len{component=\"querynode\"})", "legendFormat": "QueryNode ready tasks", "range": true, "refId": "C"}
+      ],
+      "title": "Search Queue Depth", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "ms", "color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24}, "id": 8,
+      "options": {"legend": {"calcs": ["lastNotNull", "max", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(milvus_proxy_req_in_queue_latency_bucket{component=\"proxy\",function_name=\"Search\"}[$__rate_interval])))", "legendFormat": "Proxy queue P95", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "histogram_quantile(0.99, sum by (le) (rate(milvus_proxy_req_in_queue_latency_bucket{component=\"proxy\",function_name=\"Search\"}[$__rate_interval])))", "legendFormat": "Proxy queue P99", "range": true, "refId": "B"},
+        {"editorMode": "code", "expr": "histogram_quantile(0.95, sum by (le) (rate(milvus_querynode_read_task_queue_duration_bucket{component=\"querynode\"}[$__rate_interval])))", "legendFormat": "QueryNode queue P95", "range": true, "refId": "C"}
+      ],
+      "title": "Search Queue Latency", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "ops", "color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32}, "id": 9,
+      "options": {"legend": {"calcs": ["lastNotNull", "max", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "sum(rate(milvus_proxy_req_count{component=\"proxy\",function_name=\"Search\",collection_name=\"VDBBench\",status=\"total\"}[$__rate_interval]))", "legendFormat": "Search total/s", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "sum(rate(milvus_proxy_req_count{component=\"proxy\",function_name=\"Search\",collection_name=\"VDBBench\",status=\"success\"}[$__rate_interval]))", "legendFormat": "Search success/s", "range": true, "refId": "B"},
+        {"editorMode": "code", "expr": "clamp_min(sum(rate(milvus_proxy_req_count{component=\"proxy\",function_name=\"Search\",collection_name=\"VDBBench\",status=\"total\"}[$__rate_interval])) - sum(rate(milvus_proxy_req_count{component=\"proxy\",function_name=\"Search\",collection_name=\"VDBBench\",status=\"success\"}[$__rate_interval])), 0)", "legendFormat": "Search failed/s", "range": true, "refId": "C"}
+      ],
+      "title": "Search Request Outcomes", "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "prometheus", "uid": "prometheus"}, "fieldConfig": {"defaults": {"unit": "ops", "color": {"mode": "palette-classic"}}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 32}, "id": 10,
+      "options": {"legend": {"calcs": ["lastNotNull", "max", "mean"], "displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [
+        {"editorMode": "code", "expr": "sum(rate(milvus_proxy_rate_limit_req_count{component=\"proxy\",msg_type=\"DQLSearch\",status=\"total\"}[$__rate_interval]))", "legendFormat": "Rate-limit checks/s", "range": true, "refId": "A"},
+        {"editorMode": "code", "expr": "sum(rate(milvus_proxy_rate_limit_req_count{component=\"proxy\",msg_type=\"DQLSearch\",status=\"success\"}[$__rate_interval]))", "legendFormat": "Rate-limit passed/s", "range": true, "refId": "B"},
+        {"editorMode": "code", "expr": "clamp_min(sum(rate(milvus_proxy_rate_limit_req_count{component=\"proxy\",msg_type=\"DQLSearch\",status=\"total\"}[$__rate_interval])) - sum(rate(milvus_proxy_rate_limit_req_count{component=\"proxy\",msg_type=\"DQLSearch\",status=\"success\"}[$__rate_interval])), 0)", "legendFormat": "Rate-limit rejected/s", "range": true, "refId": "C"}
+      ],
+      "title": "Search Rate Limit Outcomes", "type": "timeseries"
     }
   ],
   "refresh": "5s", "schemaVersion": 41, "tags": ["milvus", "cluster", "benchmark", "query"],
   "templating": {"list": []}, "time": {"from": "now-15m", "to": "now"}, "timepicker": {}, "timezone": "browser",
-  "title": "Milvus Query & Benchmark", "uid": "milvus-query-benchmark", "version": 1
+  "title": "Milvus Query & Benchmark", "uid": "milvus-query-benchmark", "version": 2
 }

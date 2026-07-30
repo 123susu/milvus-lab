@@ -117,7 +117,7 @@ result_<日期>_<task_label>-<HHmmssfff>_milvus.json
 result_<日期>_<task_label>-<HHmmssfff>_milvus.log
 ```
 
-JSON 会格式化为 UTF-8、两空格缩进；日志也是 UTF-8。LLM 自动报告目前在 YAML 中保持 `enabled: false`，因此默认不会产生 Markdown 总结。
+JSON 会格式化为 UTF-8、两空格缩进；日志也是 UTF-8。每次成功运行后，脚本会解析并发 Stage 日志时间窗，从 Prometheus 获取 QueryNode CPU 和 Vector Index 内存，并将结构化指标保存到 SQLite。
 
 ### 最近一次结果
 

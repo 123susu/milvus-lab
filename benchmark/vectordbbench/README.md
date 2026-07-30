@@ -13,7 +13,7 @@ This benchmark uses an isolated Python environment.
 - Benchmark case: `Performance1536D50K`
 - Index: HNSW (`M=16`, `efConstruction=128`, `ef=128`)
 - Top K: `100`
-- Concurrent clients: `1, 5, 10, 20` (`10s` each)
+- Concurrent clients: `1` (`30s`)
 
 The selected case contains 50,000 real 1,536-dimensional text embeddings,
 query vectors, and exact-neighbor ground truth.
@@ -79,44 +79,134 @@ After a successful run, Milvus result JSON files are automatically formatted
 as UTF-8 with two-space indentation.
 
 Each invocation has an independent UTF-8 log using the same filename stem as
-its result. A completed run can therefore have:
+its result:
 
 ```text
 result_20260726_hnsw-performance-cluster-local-214530127_milvus.json
-result_20260726_hnsw-performance-cluster-local-214530127_milvus.md
 result_20260726_hnsw-performance-cluster-local-214530127_milvus.log
 ```
 
-## LLM report
+## SQLite metric collection
 
-Each benchmark configuration can contain its own `_report` section:
+Each benchmark configuration can contain its own `_metrics` section:
 
 ```yaml
-_report:
-  enabled: false
-  base_url: ""
-  model: ""
-  api_key_env: DASHSCOPE_API_KEY
-  language: 简体中文
-  temperature: 0.2
-  timeout_seconds: 120
+_metrics:
+  prometheus_url: http://localhost:9090
+  timezone: "+08:00"
+  querynode_cpu_limit_cores: 2
+  query_range_step_seconds: 1
+  rate_window: 10s
+  timeout_seconds: 15
 ```
 
-Fill `base_url` and `model`, then set the API key in the environment variable
-named by `api_key_env`. Do not put the API key in YAML. Environment variables
-`VDBBENCH_LLM_BASE_URL` and `VDBBENCH_LLM_MODEL` can override the YAML values.
+After a successful benchmark, the runner saves structured metrics to:
 
-LLM report generation is currently disabled. Set `enabled: true` only when an
-automatic Markdown report is required.
+```text
+results/vectordbbench/benchmark_metrics.sqlite3
+```
 
-After a successful benchmark, the runner sends the newly produced JSON to an
-OpenAI-compatible `chat/completions` endpoint and writes a UTF-8 Markdown file
-next to it using the same filename. A missing or failed LLM configuration does
-not invalidate the completed benchmark result.
+The `benchmark_runs` table contains configuration, load/index duration,
+Recall, nDCG, serial latency, maximum QPS, the complete source JSON, and an
+instant QueryNode vector-index memory sample. The
+`concurrency_stage_metrics` table contains each concurrency stage's QPS,
+latency, exact log window, and QueryNode CPU average/peak values.
+
+Concurrent stage windows begin at `Syncing all process and start concurrency
+search` and end at `End search in concurrency`. CPU is queried over that range.
+Vector-index memory is queried once when the SQLite record is created.
+
+Set `VDBBENCH_PROMETHEUS_URL` to override the YAML URL. If Prometheus is
+temporarily unavailable, the VectorDBBench metrics are still saved; unavailable
+monitoring values remain SQL `NULL` with the error stored alongside them.
+Saving the same `run_id` and case again updates the existing row and its stages.
+Every VectorDBBench execution is retained as an independent raw run. A stable
+configuration key groups runs with the same database label, case, index/search
+parameters, load settings, enabled stages, concurrency list, duration, and
+timeout. Generated task labels, timestamps, result values, and monitoring
+samples do not affect grouping. The aggregate API reports count, mean, sample
+standard deviation, minimum, and maximum without deleting the underlying runs.
+
+## Local metrics API
+
+Install the API dependencies into the benchmark environment:
+
+```powershell
+.\.venv-bench\Scripts\python.exe -m pip install -r `
+  .\benchmark\vectordbbench\api-requirements.txt
+```
+
+Start the local FastAPI service:
+
+```powershell
+.\.venv-bench\Scripts\python.exe `
+  .\benchmark\vectordbbench\benchmark_metrics_api.py
+```
+
+The service binds to `127.0.0.1:8765` by default and exposes:
+
+```text
+GET /api/health
+GET /api/benchmarks?limit=20&offset=0
+GET /api/benchmark-aggregates?limit=20&offset=0
+GET /api/benchmarks/{run_id}?case_index=0
+GET /api/benchmark-profiles
+POST /api/benchmark-jobs
+GET /api/benchmark-jobs
+GET /api/benchmark-jobs/{job_id}
+POST /api/benchmark-jobs/{job_id}/cancel
+GET /docs
+```
+
+Create a CPU-index matrix job with:
+
+```json
+{
+  "command": "milvusivfflat",
+  "parameters": {
+    "uri": "http://localhost:19530",
+    "num_shards": 1,
+    "replica_number": 1,
+    "case_type": "Performance1536D50K",
+    "drop_old": true,
+    "load": true,
+    "load_concurrency": 4,
+    "search_serial": true,
+    "search_concurrent": true,
+    "k": 100,
+    "concurrency_duration": 30,
+    "num_concurrency": [1],
+    "concurrency_timeout": 3600,
+    "db_label": "local-cluster-8c10_5g-2_6_21"
+  },
+  "index_matrix": {
+    "nlist": [128, 256],
+    "nprobe": [8, 16, 32]
+  },
+  "repetitions": 3
+}
+```
+
+The API supports `milvushnsw`, `milvushnswsq`, `milvushnswpq`,
+`milvushnswprq`, `milvusivfflat`, `milvusivfsq8`, `milvusautoindex`, and
+`milvusflat`. It runs the Cartesian product of the selected index parameter
+lists sequentially, repeating each configuration from 1 to 5 times. Numeric,
+boolean, and enum parameter lists are supported. One request
+is limited to 30 benchmark executions. Only one benchmark job can run at a
+time. Every execution gets an independent generated configuration and log under
+`results/vectordbbench/jobs/<job_id>/run-NNN/`. The source
+profiles under `config/` are never overwritten. Job state is kept in API memory,
+while every completed raw measurement is appended to SQLite by the existing
+collector.
+
+Use `--database <path>` to select another SQLite file. Benchmark queries open
+SQLite in read-only/query-only mode. Browser requests are accepted only from
+localhost or 127.0.0.1 origins.
 
 VectorDBBench uses the collection name `VDBBench`. Its required `--drop-old`
 option only replaces that benchmark collection; it does not affect collections
-with other names.
+with other names. Starting a job from the web page therefore rebuilds
+`VDBBench`.
 
 The current Cluster topology and per-service resource limits are versioned in:
 

@@ -33,8 +33,8 @@ vectordbbench <数据库及索引子命令> --case-type <测试用例> [其他�
 | `milvusautoindex` | `AUTOINDEX` | 让 Milvus 自动选择和配置索引 | 无 | 可跑 |
 | `milvusflat` | `FLAT` | 精确暴力检索，可作为召回率和性能基线 | 无 | 只建议先跑 50K |
 | `milvushnsw` | `HNSW` | 高召回、低延迟的内存图索引 | `--m`、`--ef-construction`、`--ef-search` | 最适合当前阶段 |
-| `milvusivfflat` | `IVF_FLAT` | 倒排分桶，便于观察 `nlist/nprobe` 权衡 | `--nlist`、`--nprobe` | 可跑 |
-| `milvusivfsq8` | `IVF_SQ8` | IVF 加 8 位标量量化，降低内存 | `--nlist`、`--nprobe` | 可跑 |
+| `milvusivfflat` | `IVF_FLAT` | 倒排分桶，便于观察 `nlist/nprobe` 权衡 | `--lists`、`--probes` | 可跑 |
+| `milvusivfsq8` | `IVF_SQ8` | IVF 加 8 位标量量化，降低内存 | `--lists`、`--probes` | 可跑 |
 | `milvusivfrabitq` | `IVF_RABITQ` | IVF 加 RaBitQ 量化和可选精排 | IVF 参数及 RaBitQ/精排参数 | Milvus 支持时可实验 |
 
 关键参数：
@@ -44,6 +44,8 @@ vectordbbench <数据库及索引子命令> --case-type <测试用例> [其他�
 - `ef-search`：查询时的候选集合大小。更大通常提高召回率，但查询更慢。
 - `nlist`：IVF 的聚类中心/分桶数量。
 - `nprobe`：每次查询探测的桶数量。越大通常召回越高、延迟也越高，并且不能大于 `nlist`。
+- VectorDBBench 1.0.22 的直接 CLI 选项名是 `--lists/--probes`，
+  但 YAML 字段及内部 Milvus 参数名仍是 `nlist/nprobe`。
 - `rbq-bits-query`：RaBitQ 查询向量量化级别；当前 CLI 要求显式提供。
 - `refine`、`refine-type`、`refine-k`：是否保留精排数据、精排数据类型、精排候选放大倍数。
 
@@ -274,10 +276,14 @@ Large OpenAI (1536dim, 5M)
 
 ### 使用统一配置文件运行
 
-配置按照数据库及索引子命令拆分，一个子命令对应一个 YAML。目前先提供 HNSW 配置和统一启动脚本：
+配置按照数据库及索引子命令拆分，一个子命令对应一个 YAML。当前本地页面支持：
 
 ```text
 benchmark/vectordbbench/config/milvushnsw.yml
+benchmark/vectordbbench/config/milvusivfflat.yml
+benchmark/vectordbbench/config/milvusivfsq8.yml
+benchmark/vectordbbench/config/milvusautoindex.yml
+benchmark/vectordbbench/config/milvusflat.yml
 benchmark/vectordbbench/run_benchmark.ps1
 ```
 
@@ -293,7 +299,10 @@ benchmark/vectordbbench/run_benchmark.ps1
 .\benchmark\vectordbbench\run_benchmark.ps1 -Command milvushnsw
 ```
 
-当前只配置了 `milvushnsw`。URI、CaseType、TopK、并发、HNSW 参数和结果标签都在该文件中。
+页面可以在 HNSW、HNSW_SQ、HNSW_PQ、HNSW_PRQ、IVF_FLAT、IVF_SQ8、
+AUTOINDEX 和 FLAT 之间切换，并为每次实验生成独立 YAML。URI、CaseType、
+TopK、并发、索引参数和结果标签都会保存在该次实验配置中。量化变体的
+`refine`、`refine_type`、`refine_k` 及量化专属参数同样支持参数矩阵。
 
 ### 第一步：运行 HNSW 基准
 
@@ -337,8 +346,8 @@ FLAT 是精确检索，主要用于回答：“不使用近似索引时性能怎
 & .\.venv-bench\Scripts\vectordbbench.exe milvusivfflat `
     --uri "http://localhost:19530" `
     --case-type "Performance1536D50K" `
-    --nlist 128 `
-    --nprobe 16 `
+    --lists 128 `
+    --probes 16 `
     --drop-old `
     --search-serial `
     --search-concurrent `

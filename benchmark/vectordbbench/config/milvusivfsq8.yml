@@ -1,0 +1,27 @@
+# VectorDBBench 1.0.22 - Milvus IVF_SQ8
+_metrics:
+  prometheus_url: http://localhost:9090
+  timezone: "+08:00"
+  querynode_cpu_limit_cores: 2
+  query_range_step_seconds: 1
+  rate_window: 10s
+  timeout_seconds: 15
+
+milvusivfsq8:
+  uri: http://localhost:19530
+  num_shards: 1
+  replica_number: 1
+  case_type: Performance1536D50K
+  drop_old: true
+  load: true
+  load_concurrency: 4
+  search_serial: true
+  search_concurrent: true
+  k: 100
+  concurrency_duration: 30
+  num_concurrency: "1"
+  concurrency_timeout: 3600
+  nlist: 128
+  nprobe: 16
+  db_label: local-cluster-8c10_5g-2_6_21
+  task_label: ivfsq8-performance-cluster-local
