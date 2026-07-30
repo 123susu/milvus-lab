@@ -160,8 +160,10 @@ type SortValue = number | string | null;
 
 type AnalysisPoint = {
   key: string;
+  indexType: string;
   xValue: Exclude<IndexParameterValue, null>;
   xLabel: string;
+  parameterLabel: string;
   series: string;
   p99: MetricSummary;
   recall: MetricSummary;
@@ -169,6 +171,32 @@ type AnalysisPoint = {
 };
 
 type AnalysisMetric = "p99" | "recall" | "memory";
+
+type AnalysisRecommendation = {
+  key: "p99" | "recall" | "memory" | "balanced";
+  label: string;
+  description: string;
+  point: AnalysisPoint;
+};
+
+type RecommendationAnalysis = {
+  recommendations: AnalysisRecommendation[];
+  configurationCount: number;
+};
+
+type ChartHitPoint = {
+  x: number;
+  y: number;
+  radius: number;
+  point: AnalysisPoint;
+};
+
+type ChartTooltip = {
+  left: number;
+  top: number;
+  placeBelow: boolean;
+  point: AnalysisPoint;
+};
 
 const CHART_COLORS = [
   "#008f5d",
@@ -421,6 +449,122 @@ function formatChartValue(
   return `${value.toFixed(axis ? 0 : 2)} MiB`;
 }
 
+function formatChartSummary(summary: MetricSummary, metric: AnalysisMetric) {
+  if (summary.mean === null) return "—";
+  const mean = formatChartValue(summary.mean, metric);
+  if (summary.sample_count < 2 || summary.stddev === null) return mean;
+  return `${mean} ± ${formatChartValue(summary.stddev, metric)}`;
+}
+
+function nearestChartPoint(
+  canvas: HTMLCanvasElement,
+  clientX: number,
+  clientY: number,
+  points: ChartHitPoint[],
+) {
+  const bounds = canvas.getBoundingClientRect();
+  const x = clientX - bounds.left;
+  const y = clientY - bounds.top;
+  let nearest: ChartHitPoint | null = null;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  points.forEach((point) => {
+    const distance = Math.hypot(point.x - x, point.y - y);
+    if (distance <= point.radius + 7 && distance < nearestDistance) {
+      nearest = point;
+      nearestDistance = distance;
+    }
+  });
+  return { hit: nearest, bounds };
+}
+
+function hasCompleteRecommendationMetrics(point: AnalysisPoint) {
+  return point.p99.mean !== null
+    && point.recall.mean !== null
+    && point.memory.mean !== null;
+}
+
+function recommendationMetricRange(
+  points: AnalysisPoint[],
+  value: (point: AnalysisPoint) => number,
+) {
+  const values = points.map(value);
+  return {
+    minimum: Math.min(...values),
+    maximum: Math.max(...values),
+    range: Math.max(Math.max(...values) - Math.min(...values), 0.000001),
+  };
+}
+
+function analyzeRecommendations(points: AnalysisPoint[]): RecommendationAnalysis {
+  const complete = points.filter(hasCompleteRecommendationMetrics);
+  if (complete.length === 0) {
+    return {
+      recommendations: [],
+      configurationCount: 0,
+    };
+  }
+
+  const lowestP99 = complete.reduce((best, point) =>
+    (point.p99.mean as number) < (best.p99.mean as number) ? point : best
+  );
+  const highestRecall = complete.reduce((best, point) =>
+    (point.recall.mean as number) > (best.recall.mean as number) ? point : best
+  );
+  const lowestMemory = complete.reduce((best, point) =>
+    (point.memory.mean as number) < (best.memory.mean as number) ? point : best
+  );
+  const p99Range = recommendationMetricRange(
+    complete,
+    (point) => point.p99.mean as number,
+  );
+  const recallRange = recommendationMetricRange(
+    complete,
+    (point) => point.recall.mean as number,
+  );
+  const memoryRange = recommendationMetricRange(
+    complete,
+    (point) => point.memory.mean as number,
+  );
+  const balancedScore = (point: AnalysisPoint) => (
+    (((point.p99.mean as number) - p99Range.minimum) / p99Range.range)
+    + ((recallRange.maximum - (point.recall.mean as number)) / recallRange.range)
+    + (((point.memory.mean as number) - memoryRange.minimum) / memoryRange.range)
+  ) / 3;
+  const balanced = complete.reduce((best, point) =>
+    balancedScore(point) < balancedScore(best) ? point : best
+  );
+
+  return {
+    recommendations: [
+      {
+        key: "p99",
+        label: "P99 推荐",
+        description: "当前索引配置中 P99 最低",
+        point: lowestP99,
+      },
+      {
+        key: "recall",
+        label: "Recall 推荐",
+        description: "当前索引配置中 Recall 最高",
+        point: highestRecall,
+      },
+      {
+        key: "memory",
+        label: "内存推荐",
+        description: "当前索引配置中 Vector Index 内存最低",
+        point: lowestMemory,
+      },
+      {
+        key: "balanced",
+        label: "综合推荐",
+        description: "当前索引配置归一化后等权得分最低",
+        point: balanced,
+      },
+    ],
+    configurationCount: complete.length,
+  };
+}
+
 function categoryKey(value: Exclude<IndexParameterValue, null>) {
   return `${typeof value}:${String(value)}`;
 }
@@ -465,6 +609,8 @@ function MetricTrendChart({
   title: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hitPointsRef = useRef<ChartHitPoint[]>([]);
+  const [tooltip, setTooltip] = useState<ChartTooltip | null>(null);
   const validPoints = points.filter(
     (point) => metricFor(point, metric).mean !== null,
   );
@@ -481,6 +627,7 @@ function MetricTrendChart({
       const padding = { left: 58, right: 18, top: 20, bottom: 48 };
       const plotWidth = width - padding.left - padding.right;
       const plotHeight = height - padding.top - padding.bottom;
+      hitPointsRef.current = [];
       const categories = sortedCategories(validPoints);
       const values = validPoints.flatMap((point) => {
         const summary = metricFor(point, metric);
@@ -613,6 +760,12 @@ function MetricTrendChart({
           context.strokeStyle = "#ffffff";
           context.lineWidth = 1.5;
           context.stroke();
+          hitPointsRef.current.push({
+            x,
+            y,
+            radius: 4.5,
+            point,
+          });
         });
       });
     };
@@ -624,17 +777,60 @@ function MetricTrendChart({
   }, [metric, validPoints]);
 
   const seriesNames = [...new Set(validPoints.map((point) => point.series))];
+  const handlePointerMove = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const { hit, bounds } = nearestChartPoint(
+      canvas,
+      clientX,
+      clientY,
+      hitPointsRef.current,
+    );
+    if (!hit) {
+      setTooltip(null);
+      return;
+    }
+    setTooltip({
+      left: Math.min(Math.max(hit.x, 105), Math.max(bounds.width - 105, 105)),
+      top: hit.y,
+      placeBelow: hit.y < 90,
+      point: hit.point,
+    });
+  };
   return (
     <article className="analysis-chart-card">
       <div className="analysis-chart-title">
         <strong>{title}</strong>
         <span>均值 ± 标准差</span>
       </div>
-      <canvas
-        ref={canvasRef}
-        role="img"
-        aria-label={`${title}参数趋势图`}
-      />
+      <div className="analysis-canvas-wrap">
+        <canvas
+          ref={canvasRef}
+          role="img"
+          aria-label={`${title}参数趋势图`}
+          onMouseMove={(event) => handlePointerMove(event.clientX, event.clientY)}
+          onMouseLeave={() => setTooltip(null)}
+          onTouchStart={(event) => {
+            const touch = event.touches[0];
+            if (touch) handlePointerMove(touch.clientX, touch.clientY);
+          }}
+        />
+        {tooltip ? (
+          <div
+            className={`analysis-chart-tooltip${tooltip.placeBelow ? " tooltip-below" : ""}`}
+            style={{ left: tooltip.left, top: tooltip.top }}
+          >
+            <strong>{tooltip.point.series}</strong>
+            <span>{tooltip.point.xLabel}</span>
+            <span>
+              {metric === "p99" ? "P99" : metric === "recall" ? "Recall" : "Vector Index"}
+              {" "}
+              <b>{formatChartSummary(metricFor(tooltip.point, metric), metric)}</b>
+            </span>
+            <small>样本数 n={metricFor(tooltip.point, metric).sample_count}</small>
+          </div>
+        ) : null}
+      </div>
       <div className="chart-legend">
         {seriesNames.map((series, index) => (
           <span key={series}>
@@ -649,6 +845,8 @@ function MetricTrendChart({
 
 function TradeoffChart({ points }: { points: AnalysisPoint[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const hitPointsRef = useRef<ChartHitPoint[]>([]);
+  const [tooltip, setTooltip] = useState<ChartTooltip | null>(null);
   const validPoints = points.filter(
     (point) => point.p99.mean !== null && point.recall.mean !== null,
   );
@@ -665,6 +863,7 @@ function TradeoffChart({ points }: { points: AnalysisPoint[] }) {
       const padding = { left: 58, right: 24, top: 20, bottom: 48 };
       const plotWidth = width - padding.left - padding.right;
       const plotHeight = height - padding.top - padding.bottom;
+      hitPointsRef.current = [];
       if (validPoints.length === 0) {
         context.fillStyle = "#69766f";
         context.font = "11px sans-serif";
@@ -748,6 +947,12 @@ function TradeoffChart({ points }: { points: AnalysisPoint[] }) {
         context.strokeStyle = "#ffffff";
         context.lineWidth = 1.5;
         context.stroke();
+        hitPointsRef.current.push({
+          x: xPosition(p99),
+          y: yPosition(recall),
+          radius,
+          point,
+        });
       });
     };
 
@@ -757,22 +962,123 @@ function TradeoffChart({ points }: { points: AnalysisPoint[] }) {
     return () => observer.disconnect();
   }, [validPoints]);
 
+  const handlePointerMove = (clientX: number, clientY: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const { hit, bounds } = nearestChartPoint(
+      canvas,
+      clientX,
+      clientY,
+      hitPointsRef.current,
+    );
+    if (!hit) {
+      setTooltip(null);
+      return;
+    }
+    setTooltip({
+      left: Math.min(Math.max(hit.x, 105), Math.max(bounds.width - 105, 105)),
+      top: hit.y,
+      placeBelow: hit.y < 105,
+      point: hit.point,
+    });
+  };
   return (
     <article className="analysis-chart-card">
       <div className="analysis-chart-title">
         <strong>P99–Recall–内存权衡</strong>
         <span>越靠左上越好，气泡越小内存越低</span>
       </div>
-      <canvas
-        ref={canvasRef}
-        role="img"
-        aria-label="P99、Recall 与索引内存权衡气泡图"
-      />
+      <div className="analysis-canvas-wrap">
+        <canvas
+          ref={canvasRef}
+          role="img"
+          aria-label="P99、Recall 与索引内存权衡气泡图"
+          onMouseMove={(event) => handlePointerMove(event.clientX, event.clientY)}
+          onMouseLeave={() => setTooltip(null)}
+          onTouchStart={(event) => {
+            const touch = event.touches[0];
+            if (touch) handlePointerMove(touch.clientX, touch.clientY);
+          }}
+        />
+        {tooltip ? (
+          <div
+            className={`analysis-chart-tooltip tradeoff-tooltip${tooltip.placeBelow ? " tooltip-below" : ""}`}
+            style={{ left: tooltip.left, top: tooltip.top }}
+          >
+            <strong>{tooltip.point.indexType}</strong>
+            <span className="tooltip-parameters">{tooltip.point.parameterLabel}</span>
+            <span>P99 <b>{formatChartSummary(tooltip.point.p99, "p99")}</b></span>
+            <span>Recall <b>{formatChartSummary(tooltip.point.recall, "recall")}</b></span>
+            <span>Vector Index <b>{formatChartSummary(tooltip.point.memory, "memory")}</b></span>
+            <small>
+              样本数 n={Math.max(
+                tooltip.point.p99.sample_count,
+                tooltip.point.recall.sample_count,
+                tooltip.point.memory.sample_count,
+              )}
+            </small>
+          </div>
+        ) : null}
+      </div>
       <div className="tradeoff-axis-note">
         <span>横轴 P99（ms）</span>
         <span>纵轴 Recall</span>
       </div>
     </article>
+  );
+}
+
+function RecommendationSection({
+  analysis,
+  indexType,
+}: {
+  analysis: RecommendationAnalysis;
+  indexType?: string;
+}) {
+  if (analysis.recommendations.length === 0) return null;
+  return (
+    <div className="analysis-recommendations within-index-recommendations">
+      <div className="recommendation-heading">
+        <div>
+          <span>INDEX PARAMETER RECOMMENDATIONS</span>
+          <strong>{indexType ?? "当前索引"} 的参数配置建议</strong>
+        </div>
+        <p>
+          所有指标完整的配置均参与，不设置样本数门槛。
+          当前索引共比较 {analysis.configurationCount} 组完整配置。
+          单项建议直接比较数值大小，综合建议按当前范围归一化后等权计算。
+        </p>
+      </div>
+      <div className="recommendation-grid">
+        {analysis.recommendations.map((recommendation) => (
+          <article
+            className={`recommendation-card recommendation-${recommendation.key}`}
+            key={recommendation.key}
+          >
+            <div className="recommendation-card-title">
+              <span>{recommendation.label}</span>
+              <small>{recommendation.description}</small>
+            </div>
+            <strong>{recommendation.point.indexType}</strong>
+            <p>{recommendation.point.parameterLabel}</p>
+            <dl>
+              <div>
+                <dt>P99</dt>
+                <dd>{formatChartSummary(recommendation.point.p99, "p99")}</dd>
+              </div>
+              <div>
+                <dt>Recall</dt>
+                <dd>{formatChartSummary(recommendation.point.recall, "recall")}</dd>
+              </div>
+              <div>
+                <dt>Vector Index</dt>
+                <dd>{formatChartSummary(recommendation.point.memory, "memory")}</dd>
+              </div>
+            </dl>
+          </article>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -849,6 +1155,48 @@ function formatIndexParameters(
     .filter(([, value]) => value !== null)
     .map(([name, value]) => `${labels[name] ?? name} ${value}`);
   return entries.length > 0 ? entries : ["无专属参数"];
+}
+
+function aggregateAnalysisPoint(
+  aggregate: BenchmarkAggregate,
+  parameterName: string,
+) {
+  const indexParameters = { ...aggregate.index_parameters };
+  const searchParameters = { ...aggregate.search_parameters };
+  const allParameters = { ...indexParameters, ...searchParameters };
+  const xValue = allParameters[parameterName];
+  if (xValue === null || xValue === undefined) return null;
+  return {
+    key: `${aggregate.configuration_key}-${aggregate.stage_index}`,
+    indexType: aggregate.index_type,
+    xValue,
+    xLabel: `${parameterName} = ${String(xValue)}`,
+    parameterLabel: formatIndexParameters(
+      indexParameters,
+      searchParameters,
+    ).join(" · "),
+    series: "五档配置轨迹",
+    p99: aggregate.latency_p99_ms,
+    recall: aggregate.recall,
+    memory: aggregate.vector_index_memory_mib,
+  } satisfies AnalysisPoint;
+}
+
+function aggregateRecommendationPoint(aggregate: BenchmarkAggregate) {
+  return {
+    key: `${aggregate.configuration_key}-${aggregate.stage_index}`,
+    indexType: aggregate.index_type,
+    xValue: aggregate.index_type,
+    xLabel: aggregate.index_type,
+    parameterLabel: formatIndexParameters(
+      aggregate.index_parameters,
+      aggregate.search_parameters,
+    ).join(" · "),
+    series: aggregate.index_type,
+    p99: aggregate.latency_p99_ms,
+    recall: aggregate.recall,
+    memory: aggregate.vector_index_memory_mib,
+  } satisfies AnalysisPoint;
 }
 
 function sortValues(row: BenchmarkRow, key: SortKey): SortValue[] {
@@ -1548,22 +1896,31 @@ export default function Home() {
       }
     });
     return [...latestByParameterValue.values()].flatMap((aggregate) => {
-      const indexParameters = { ...aggregate.index_parameters };
-      const searchParameters = { ...aggregate.search_parameters };
-      const allParameters = { ...indexParameters, ...searchParameters };
-      const xValue = allParameters[effectiveAnalysisParameter];
-      if (xValue === null || xValue === undefined) return [];
-      return [{
-        key: `${aggregate.configuration_key}-${aggregate.stage_index}`,
-        xValue,
-        xLabel: String(xValue),
-        series: "五档配置轨迹",
-        p99: aggregate.latency_p99_ms,
-        recall: aggregate.recall,
-        memory: aggregate.vector_index_memory_mib,
-      }];
+      const point = aggregateAnalysisPoint(
+        aggregate,
+        effectiveAnalysisParameter,
+      );
+      return point ? [point] : [];
     });
   }, [analysisRows, effectiveAnalysisParameter]);
+  const tradeoffPoints = useMemo<AnalysisPoint[]>(
+    () => analysisRows.flatMap((aggregate) => {
+      const point = aggregateAnalysisPoint(
+        aggregate,
+        effectiveAnalysisParameter,
+      );
+      return point ? [point] : [];
+    }),
+    [analysisRows, effectiveAnalysisParameter],
+  );
+  const withinIndexRecommendationPoints = useMemo(
+    () => analysisRows.map(aggregateRecommendationPoint),
+    [analysisRows],
+  );
+  const withinIndexRecommendations = useMemo(
+    () => analyzeRecommendations(withinIndexRecommendationPoints),
+    [withinIndexRecommendationPoints],
+  );
   const jobIsActive = job
     ? ["queued", "running", "cancelling"].includes(job.status)
     : false;
@@ -2433,7 +2790,7 @@ export default function Home() {
                   metric="memory"
                   title={`Vector Index 随 ${effectiveAnalysisParameter} 变化`}
                 />
-                <TradeoffChart points={analysisPoints} />
+                <TradeoffChart points={tradeoffPoints} />
               </div>
             </>
           ) : (
@@ -2443,6 +2800,14 @@ export default function Home() {
                 : "暂无聚合结果，完成 benchmark 后即可生成参数趋势图。"}
             </div>
           )}
+          {analysisBaseline ? (
+            <>
+              <RecommendationSection
+                analysis={withinIndexRecommendations}
+                indexType={analysisBaseline.index_type}
+              />
+            </>
+          ) : null}
         </section>
 
         <footer>
