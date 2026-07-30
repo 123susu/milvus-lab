@@ -171,7 +171,32 @@ POST /api/benchmark-jobs
 GET /api/benchmark-jobs
 GET /api/benchmark-jobs/{job_id}
 POST /api/benchmark-jobs/{job_id}/cancel
+POST /api/tuning-agent/recommend
 GET /docs
+```
+
+The Recall tuning endpoint is a small Deep Agents agent running on LangGraph.
+Its only benchmark-data tool is a constrained, read-only SQLite aggregate
+query; it cannot execute arbitrary SQL, start a benchmark, or update records.
+The agent reuses the OpenAI-compatible Qwen configuration that was previously
+used by `run_benchmark.ps1`: `qwen-plus`, the Aliyun Bailian compatible-mode
+endpoint, and the `DASHSCOPE_API_KEY` environment variable. Set the key before
+starting the API:
+
+```powershell
+$env:DASHSCOPE_API_KEY = "<your-api-key>"
+```
+
+The defaults can be overridden with `MILVUS_TUNING_AGENT_MODEL`,
+`MILVUS_TUNING_AGENT_BASE_URL`, and
+`MILVUS_TUNING_AGENT_API_KEY_ENV`. The older `VDBBENCH_LLM_MODEL` and
+`VDBBENCH_LLM_BASE_URL` variables are also accepted. Submit a target as a
+decimal:
+
+```json
+{
+  "recall_target": 0.95
+}
 ```
 
 Create a CPU-index matrix job with:

@@ -36,6 +36,12 @@ from metrics.tracing import (
     TraceSearchError,
     TraceSearchRequest as TraceServiceRequest,
 )
+from metrics.tuning_agent import (
+    BenchmarkTuningAgent,
+    TuningAgentConfigurationError,
+    TuningAgentDataError,
+    TuningAgentError,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -234,6 +240,17 @@ class TraceSearchResponse(ApiModel):
     client_latency_ms: float
     total_duration_ms: float
     spans: list[TraceSpanResponse]
+
+
+class TuningAgentRequest(ApiModel):
+    recall_target: float = Field(gt=0, le=1)
+
+
+class TuningAgentResponse(ApiModel):
+    recall_target: float
+    model: str
+    answer: str
+    tools_used: list[str]
 
 
 class BenchmarkCommonParametersRequest(ApiModel):
@@ -630,7 +647,7 @@ def build_benchmark(
 
 app = FastAPI(
     title="Milvus Lab Benchmark Metrics API",
-    version="1.2.0",
+    version="1.3.0",
     description="Local API backed by VectorDBBench, Prometheus, and SQLite.",
 )
 app.add_middleware(
@@ -861,6 +878,29 @@ def cancel_benchmark_job(
         return build_job_response(JOB_MANAGER.cancel(job_id))
     except KeyError as error:
         raise HTTPException(status_code=404, detail="Benchmark job was not found") from error
+
+
+@app.post(
+    "/api/tuning-agent/recommend",
+    response_model=TuningAgentResponse,
+)
+def recommend_index_configuration(
+    request: TuningAgentRequest,
+) -> TuningAgentResponse:
+    try:
+        result = BenchmarkTuningAgent(database_path()).recommend(
+            request.recall_target
+        )
+        return TuningAgentResponse(
+            recall_target=request.recall_target,
+            **result,
+        )
+    except TuningAgentConfigurationError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except TuningAgentDataError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
+    except TuningAgentError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
 
 
 @app.post(

@@ -301,6 +301,13 @@ type TraceSearchResult = {
   spans: TraceSpan[];
 };
 
+type TuningAgentResult = {
+  recall_target: number;
+  model: string;
+  answer: string;
+  tools_used: string[];
+};
+
 const API_BASE_URL = (
   process.env.NEXT_PUBLIC_BENCHMARK_API_URL ?? "http://127.0.0.1:8765"
 ).replace(/\/$/, "");
@@ -310,6 +317,29 @@ const SITE_BASE_PATH = (
   process.env.NEXT_PUBLIC_SITE_BASE_PATH ?? "/"
 ).replace(/\/?$/, "/");
 const PUBLIC_SNAPSHOT_URL = `${SITE_BASE_PATH}benchmark-snapshot.json`;
+const PUBLIC_AGENT_DEMO: TuningAgentResult = {
+  recall_target: 0.95,
+  model: "qwen-plus",
+  tools_used: ["query_benchmark_candidates"],
+  answer: `目标判断
+- 当前实验数据中有 8 组配置达到 95% Recall 目标。
+
+推荐配置
+- 索引类型：HNSW
+- 索引参数：M=16，efConstruction=128
+- 搜索参数：efSearch=128
+- 当前均值：Recall 96.04%，P99 7.13 ms，Vector Index 300.04 MiB
+
+推荐依据
+- 在当前达到 Recall 目标的配置中，这组配置的 P99 最低。
+- Recall 比目标高 1.04 个百分点，保留了一定余量。
+- 索引内存数据有效；结论仅代表当前数据集、TopK、并发和集群环境。
+
+后续调优建议
+- 固定 M=16、efConstruction=128，下一轮只调整 efSearch，测试 96、112、128、144。
+- 重点观察 Recall 是否持续达到 95%，以及降低 efSearch 后 P99 能否继续下降。
+- 如果 Recall 波动低于目标，再提高 efSearch；只有搜索参数无法满足目标时，再提高 M 或 efConstruction，并同步观察索引内存和构建耗时。`,
+};
 
 const DEFAULT_PARAMETERS: BenchmarkParameters = {
   command: "milvushnsw",
@@ -1636,6 +1666,13 @@ export default function Home() {
   const [traceRunning, setTraceRunning] = useState(false);
   const [traceError, setTraceError] = useState<string | null>(null);
   const [traceResult, setTraceResult] = useState<TraceSearchResult | null>(null);
+  const [agentRecallTarget, setAgentRecallTarget] = useState(95);
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentError, setAgentError] = useState<string | null>(null);
+  const [agentResult, setAgentResult] = useState<TuningAgentResult | null>(null);
+  const displayedAgentResult = READ_ONLY_DEMO
+    ? PUBLIC_AGENT_DEMO
+    : agentResult;
   const displayedTraceResult = READ_ONLY_DEMO ? PUBLIC_TRACE_DEMO : traceResult;
 
   const loadBenchmarks = useCallback(async (signal?: AbortSignal) => {
@@ -1859,6 +1896,42 @@ export default function Home() {
       );
     } finally {
       setTraceRunning(false);
+    }
+  }
+
+  async function runTuningAgent(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAgentRunning(true);
+    setAgentError(null);
+    setAgentResult(null);
+    try {
+      if (
+        !Number.isFinite(agentRecallTarget)
+        || agentRecallTarget <= 0
+        || agentRecallTarget > 100
+      ) {
+        throw new Error("Recall 目标必须大于 0%，且不超过 100%");
+      }
+      const response = await fetch(`${API_BASE_URL}/api/tuning-agent/recommend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recall_target: agentRecallTarget / 100,
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          apiErrorMessage(payload, `Agent API 返回 HTTP ${response.status}`),
+        );
+      }
+      setAgentResult(payload as TuningAgentResult);
+    } catch (reason) {
+      setAgentError(
+        reason instanceof Error ? reason.message : "无法生成索引调优建议",
+      );
+    } finally {
+      setAgentRunning(false);
     }
   }
 
@@ -2560,6 +2633,96 @@ export default function Home() {
           )}
           </section>
         )}
+
+        <section className="agent-panel">
+            <div className="agent-heading">
+              <div>
+                <p className="eyebrow">LANGGRAPH · DEEP AGENTS</p>
+                <h2>
+                  {READ_ONLY_DEMO
+                    ? "Recall 目标调优 Agent 演示"
+                    : "Recall 目标调优 Agent"}
+                </h2>
+                <p>
+                  {READ_ONLY_DEMO
+                    ? "展示 Agent 基于公开实验快照生成的一次真实建议；公开页面不会连接本地 SQLite，也不会调用模型接口。"
+                    : "输入目标 Recall，Agent 只读查询当前 SQLite 聚合实验，推荐已有配置并给出下一轮参数调优方向。当前不会自动启动压测或修改数据。"}
+                </p>
+              </div>
+              {READ_ONLY_DEMO ? (
+                <div className="agent-demo-badge">
+                  <span>真实结果 · 静态快照</span>
+                  <strong>Recall 目标 95% · qwen-plus</strong>
+                </div>
+              ) : (
+                <form className="agent-form" onSubmit={runTuningAgent}>
+                  <label>
+                    <span>Recall 目标</span>
+                    <div className="agent-target-input">
+                      <input
+                        type="number"
+                        min={0.01}
+                        max={100}
+                        step={0.01}
+                        value={agentRecallTarget}
+                        onChange={(event) =>
+                          setAgentRecallTarget(Number(event.target.value))
+                        }
+                        disabled={agentRunning}
+                        required
+                      />
+                      <b>%</b>
+                    </div>
+                  </label>
+                  <button
+                    type="submit"
+                    className="run-button"
+                    disabled={agentRunning || jobIsActive}
+                  >
+                    {agentRunning
+                      ? "正在分析实验数据…"
+                      : jobIsActive
+                        ? "Benchmark 运行中"
+                        : "生成调优建议"}
+                  </button>
+                </form>
+              )}
+            </div>
+
+            <div className="agent-scope">
+              <span>唯一数据工具</span>
+              <strong>只读 SQLite 聚合查询</strong>
+              <small>
+                {READ_ONLY_DEMO
+                  ? "公开页面仅展示结果快照 · 不包含数据库或模型密钥"
+                  : "不开放任意 SQL · 不触发压测 · 不修改实验记录"}
+              </small>
+            </div>
+
+            {!READ_ONLY_DEMO && agentError && (
+              <div className="agent-message agent-message-error" role="alert">
+                <strong>Agent 未完成</strong>
+                <span>{agentError}</span>
+              </div>
+            )}
+
+            {displayedAgentResult && (
+              <div className="agent-result" aria-live="polite">
+                <div className="agent-result-meta">
+                  <span>
+                    目标 <b>{(displayedAgentResult.recall_target * 100).toFixed(2)}%</b>
+                  </span>
+                  <span>
+                    模型 <b>{displayedAgentResult.model}</b>
+                  </span>
+                  <span>
+                    工具 <b>{displayedAgentResult.tools_used.join(", ")}</b>
+                  </span>
+                </div>
+                <div className="agent-answer">{displayedAgentResult.answer}</div>
+              </div>
+            )}
+          </section>
 
         <section className="trace-panel">
             <div className="trace-heading">

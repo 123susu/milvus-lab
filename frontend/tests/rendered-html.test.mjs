@@ -44,6 +44,9 @@ test("server-renders the MilvusTune local metrics shell", async () => {
   if (process.env.NEXT_PUBLIC_READ_ONLY_DEMO === "true") {
     assert.match(html, /公开只读/);
     assert.match(html, /VectorDBBench 公开实验快照/);
+    assert.match(html, /Recall 目标调优 Agent 演示/);
+    assert.match(html, /真实结果 · 静态快照/);
+    assert.match(html, /当前实验数据中有 8 组配置达到 95% Recall 目标/);
     assert.doesNotMatch(html, /运行 Benchmark|取消任务|发起一组新的向量索引实验/);
   }
 });
@@ -58,6 +61,9 @@ test("wires the page to the local benchmark API with resilient states", async ()
   assert.match(page, /NEXT_PUBLIC_BENCHMARK_API_URL/);
   assert.match(page, /NEXT_PUBLIC_READ_ONLY_DEMO/);
   assert.match(page, /benchmark-snapshot\.json/);
+  assert.match(page, /PUBLIC_AGENT_DEMO/);
+  assert.match(page, /query_benchmark_candidates/);
+  assert.match(page, /\/api\/tuning-agent\/recommend/);
   assert.match(page, /公开只读数据 · VectorDBBench 实验快照/);
   assert.match(page, /\{!READ_ONLY_DEMO && \(/);
   assert.match(page, /\/api\/benchmarks\?limit=100&offset=0/);
