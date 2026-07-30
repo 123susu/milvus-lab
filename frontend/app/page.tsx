@@ -373,10 +373,7 @@ const PUBLIC_AGENT_DEMO: TuningAgentResult = {
 
 后续调优建议
 - 固定 nlist=256，在 nprobe=48、56、64 之间补充实验，寻找满足 Recall 目标的更低延迟边界。
-- 对候选配置重复运行 3 次，使用均值和标准差验证结果稳定性。
-
-说明
-- 以上内容为 GitHub Pages 静态 Mock，用于展示 Agent 的决策与工具调用过程，不会发起真实压测。`,
+- 对候选配置重复运行 3 次，使用均值和标准差验证结果稳定性。`,
 };
 
 const DEFAULT_PARAMETERS: BenchmarkParameters = {
