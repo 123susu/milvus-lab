@@ -1,10 +1,10 @@
 # VectorDBBench 1.0.22 - Milvus HNSW
 #
 # Run:
-#   .\benchmark\vectordbbench\run_benchmark.ps1 -Command milvushnsw
+#   .\src\vectordbbench\run_benchmark.ps1 -Command milvushnsw
 #
 # Validate without running:
-#   .\benchmark\vectordbbench\run_benchmark.ps1 -Command milvushnsw -DryRun
+#   .\src\vectordbbench\run_benchmark.ps1 -Command milvushnsw -DryRun
 
 # SQLite metric collection. QueryNode CPU comes from the Prometheus data source
 # used by Grafana and is limited to each concurrent search stage window.

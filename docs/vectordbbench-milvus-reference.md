@@ -279,24 +279,24 @@ Large OpenAI (1536dim, 5M)
 配置按照数据库及索引子命令拆分，一个子命令对应一个 YAML。当前本地页面支持：
 
 ```text
-benchmark/vectordbbench/config/milvushnsw.yml
-benchmark/vectordbbench/config/milvusivfflat.yml
-benchmark/vectordbbench/config/milvusivfsq8.yml
-benchmark/vectordbbench/config/milvusautoindex.yml
-benchmark/vectordbbench/config/milvusflat.yml
-benchmark/vectordbbench/run_benchmark.ps1
+src/vectordbbench/config/milvushnsw.yml
+src/vectordbbench/config/milvusivfflat.yml
+src/vectordbbench/config/milvusivfsq8.yml
+src/vectordbbench/config/milvusautoindex.yml
+src/vectordbbench/config/milvusflat.yml
+src/vectordbbench/run_benchmark.ps1
 ```
 
 `-Command <名称>` 默认读取 `config/<名称>.yml`。例如以后增加 `milvusivfflat` 时，应建立独立的 `config/milvusivfflat.yml`。先执行只解析配置、不访问数据库的检查：
 
 ```powershell
-.\benchmark\vectordbbench\run_benchmark.ps1 -Command milvushnsw -DryRun
+.\src\vectordbbench\run_benchmark.ps1 -Command milvushnsw -DryRun
 ```
 
 确认配置后正式运行：
 
 ```powershell
-.\benchmark\vectordbbench\run_benchmark.ps1 -Command milvushnsw
+.\src\vectordbbench\run_benchmark.ps1 -Command milvushnsw
 ```
 
 页面可以在 HNSW、HNSW_SQ、HNSW_PQ、HNSW_PRQ、IVF_FLAT、IVF_SQ8、
@@ -307,7 +307,7 @@ TopK、并发、索引参数和结果标签都会保存在该次实验配置中�
 ### 第一步：运行 HNSW 基准
 
 ```powershell
-.\benchmark\vectordbbench\run_benchmark.ps1 -Command milvushnsw
+.\src\vectordbbench\run_benchmark.ps1 -Command milvushnsw
 ```
 
 当前脚本使用：

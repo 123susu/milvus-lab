@@ -24,19 +24,19 @@ Each database/index subcommand has its own YAML configuration. The current
 HNSW profile lives in:
 
 ```text
-benchmark/vectordbbench/config/milvushnsw.yml
+src/vectordbbench/config/milvushnsw.yml
 ```
 
 Validate a profile without executing the benchmark:
 
 ```powershell
-.\benchmark\vectordbbench\run_benchmark.ps1 -Command milvushnsw -DryRun
+.\src\vectordbbench\run_benchmark.ps1 -Command milvushnsw -DryRun
 ```
 
 Run the configured HNSW profile:
 
 ```powershell
-.\benchmark\vectordbbench\run_benchmark.ps1 -Command milvushnsw
+.\src\vectordbbench\run_benchmark.ps1 -Command milvushnsw
 ```
 
 ## Monitoring
@@ -149,14 +149,14 @@ Install the API dependencies into the benchmark environment:
 
 ```powershell
 .\.venv-bench\Scripts\python.exe -m pip install -r `
-  .\benchmark\vectordbbench\api-requirements.txt
+  .\src\vectordbbench\api-requirements.txt
 ```
 
 Start the local FastAPI service:
 
 ```powershell
 .\.venv-bench\Scripts\python.exe `
-  .\benchmark\vectordbbench\benchmark_metrics_api.py
+  .\src\vectordbbench\benchmark_metrics_api.py
 ```
 
 The service binds to `127.0.0.1:8765` by default and exposes:
@@ -180,12 +180,11 @@ Before the agent runs, a deterministic LangGraph node reads aggregate SQLite
 history and infers the retained VDBBench Collection configuration from the
 latest raw run. The agent's only business tool is `run_benchmark`.
 
-That tool runs a search-only benchmark with `drop_old=false`, `load=false`,
-`search_serial=true`, and `num_concurrency=1`. The serial search is required to
-calculate Recall; the concurrent stage remains a single-concurrency latency
-measurement. They run as two isolated search-only jobs because VectorDBBench
-stops the serial runner when a concurrent search finishes. It locks the index type and all
-build-time parameters to the retained Collection and only accepts its search
+That tool runs a full benchmark with `drop_old=true`, `load=true`,
+`search_serial=true`, and `num_concurrency=1`. Each call rebuilds only the
+`VDBBench` Collection, imports the configured dataset, builds and loads the
+fixed index, calculates Recall, and measures single-concurrency latency. It
+locks the index type and all build-time parameters and only accepts its search
 parameters (for example `ef_search` or `nprobe`). Calls are serialized and
 limited to three per recommendation request. The Collection must still match
 the latest SQLite run; if it was rebuilt externally, run or record a matching
@@ -203,7 +202,7 @@ $env:DASHSCOPE_API_KEY = "<your-api-key>"
 To trace the LangGraph and Deep Agent execution in LangSmith, set these
 server-side variables before starting the API. Tracing is disabled by default:
 
-You can also directly edit `benchmark/vectordbbench/config/langsmith.yml`:
+You can also directly edit `src/vectordbbench/config/langsmith.yml`:
 
 ```powershell
 $env:MILVUS_LANGSMITH_TRACING = "true"

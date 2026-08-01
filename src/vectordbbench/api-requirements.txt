@@ -7,3 +7,5 @@ langgraph==1.2.10
 langchain-openai==1.4.1
 langsmith==0.10.13
 socksio==1.0.0
+matplotlib==3.10.8
+tornado==6.5.7

@@ -129,8 +129,8 @@ run_benchmark
 ```
 
 SQLite 读取不暴露给大模型，而是在进入 Agent 前由确定性的 LangGraph 节点完成。
-`run_benchmark` 固定 `drop_old=false`、`load=false`，不会重建 Collection 或
-重新导入数据；它只允许修改当前索引的搜索参数，例如 HNSW 的 `ef_search` 或
+`run_benchmark` 固定 `drop_old=true`、`load=true`，每次会重建 `VDBBench`
+Collection、重新导入数据并构建索引；它只允许修改当前索引的搜索参数，例如 HNSW 的 `ef_search` 或
 IVF 的 `nprobe`。`M`、`efConstruction`、`nlist` 和量化类型等构建参数保持不变。
 
 默认复用阿里云百炼 OpenAI-compatible API：
@@ -167,7 +167,7 @@ py -3.13 -m venv .venv-bench
 .\.venv-bench\Scripts\python.exe -m pip install vectordb-bench==1.0.22
 
 .\.venv-bench\Scripts\python.exe -m pip install -r `
-  .\benchmark\vectordbbench\api-requirements.txt
+  .\src\vectordbbench\api-requirements.txt
 ```
 
 ### 2. 启动 Milvus 与监控
@@ -203,7 +203,7 @@ $env:DASHSCOPE_API_KEY = "<your-api-key>"
 如需查看 LangGraph、Deep Agent 和 `run_benchmark` 的完整调用链路，可以在后端
 启动前开启 LangSmith：
 
-也可以直接修改 `benchmark/vectordbbench/config/langsmith.yml`，配置文件参数会被
+也可以直接修改 `src/vectordbbench/config/langsmith.yml`，配置文件参数会被
 环境变量覆盖。
 
 ```powershell
@@ -218,7 +218,7 @@ LangSmith 密钥只保留在后端环境变量中；未开启 tracing 时不会�
 
 ```powershell
 .\.venv-bench\Scripts\python.exe `
-  .\benchmark\vectordbbench\benchmark_metrics_api.py
+  .\src\vectordbbench\benchmark_metrics_api.py
 ```
 
 API 默认地址为 `http://127.0.0.1:8765`，OpenAPI 文档位于
@@ -239,7 +239,7 @@ npm run dev
 校验配置但不执行：
 
 ```powershell
-.\benchmark\vectordbbench\run_benchmark.ps1 `
+.\src\vectordbbench\run_benchmark.ps1 `
   -Command milvushnsw `
   -DryRun
 ```
@@ -247,14 +247,14 @@ npm run dev
 执行一次 HNSW Benchmark：
 
 ```powershell
-.\benchmark\vectordbbench\run_benchmark.ps1 `
+.\src\vectordbbench\run_benchmark.ps1 `
   -Command milvushnsw
 ```
 
 运行代表性参数扫描：
 
 ```powershell
-.\benchmark\vectordbbench\run_representative_index_sweep.ps1
+.\src\vectordbbench\run_representative_index_sweep.ps1
 ```
 
 参数扫描脚本会串行运行，建议在 Cluster 空闲时执行。
@@ -277,7 +277,7 @@ Milvus 默认未启用鉴权，仅适用于本地实验。
 
 ```text
 milvus-lab/
-├─ benchmark/vectordbbench/       Benchmark 运行器、配置、采集器与 FastAPI
+├─ src/vectordbbench/       Benchmark 运行器、配置、采集器与 FastAPI
 │  ├─ config/                     各类 Milvus 索引配置
 │  ├─ metrics/                    SQLite、任务管理、Trace 与调优 Agent
 │  └─ tests/                      后端单元测试
@@ -302,7 +302,7 @@ milvus-lab/
 后端测试：
 
 ```powershell
-Set-Location .\benchmark\vectordbbench
+Set-Location .\src\vectordbbench
 ..\..\.venv-bench\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
@@ -318,7 +318,7 @@ npm test
 - [本地部署与重启](deployments/README.md)
 - [Milvus Cluster 部署细节](deployments/milvus-cluster/README.md)
 - [Prometheus 与 Grafana](deployments/monitoring/README.md)
-- [VectorDBBench 运行与指标采集](benchmark/vectordbbench/README.md)
+- [VectorDBBench 运行与指标采集](src/vectordbbench/README.md)
 - [VectorDBBench Milvus 索引参考](docs/vectordbbench-milvus-reference.md)
 
 ## Roadmap

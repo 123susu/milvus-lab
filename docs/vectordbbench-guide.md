@@ -229,7 +229,7 @@ VectorDBBench 能覆盖岗位描述中的一部分关键能力：
 执行 HNSW 基准：
 
 ```powershell
-.\benchmark\vectordbbench\run_benchmark.ps1 -Command milvushnsw
+.\src\vectordbbench\run_benchmark.ps1 -Command milvushnsw
 ```
 
 脚本配置：
@@ -280,4 +280,4 @@ results/vectordbbench
 - VectorDBBench 仓库：<https://github.com/zilliztech/VectorDBBench>
 - VectorDBBench Leaderboard：<https://zilliz.com/benchmark>
 - Milvus 文档：<https://milvus.io/docs>
-- 当前项目运行脚本：`benchmark/vectordbbench/run_benchmark.ps1`
+- 当前项目运行脚本：`src/vectordbbench/run_benchmark.ps1`

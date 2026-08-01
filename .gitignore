@@ -37,3 +37,4 @@ results/
 
 # Local observability credentials
 benchmark/vectordbbench/config/langsmith.yml
+src/vectordbbench/config/langsmith.yml

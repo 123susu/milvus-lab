@@ -36,7 +36,7 @@ from metrics.tracing import (
     TraceSearchError,
     TraceSearchRequest as TraceServiceRequest,
 )
-from metrics.tuning_agent import (
+from agent.tuning_agent import (
     BenchmarkTuningAgent,
     TuningAgentBenchmarkConflictError,
     TuningAgentConfigurationError,
@@ -51,13 +51,13 @@ DEFAULT_DATABASE = (
 )
 BASE_CONFIG = (
     PROJECT_ROOT
-    / "benchmark"
+    / "src"
     / "vectordbbench"
     / "config"
     / "milvushnsw.yml"
 )
 BENCHMARK_RUNNER = (
-    PROJECT_ROOT / "benchmark" / "vectordbbench" / "run_benchmark.ps1"
+    PROJECT_ROOT / "src" / "vectordbbench" / "run_benchmark.ps1"
 )
 JOBS_ROOT = PROJECT_ROOT / "results" / "vectordbbench" / "jobs"
 JAEGER_QUERY_URL = os.environ.get(
@@ -75,7 +75,7 @@ class HealthResponse(ApiModel):
     database: str
     benchmark_run_count: int
     active_job_id: str | None
-    agent_executor_mode: str = "single-job-serial-concurrent-v3"
+    agent_executor_mode: str = "drop-load-serial-concurrent-v4"
 
 
 class ConcurrencyStageResponse(ApiModel):
@@ -682,7 +682,7 @@ def health() -> HealthResponse:
         database=str(database_path()),
         benchmark_run_count=count,
         active_job_id=JOB_MANAGER.active_job_id,
-        agent_executor_mode="single-job-serial-concurrent-v3",
+        agent_executor_mode="drop-load-serial-concurrent-v4",
     )
 
 

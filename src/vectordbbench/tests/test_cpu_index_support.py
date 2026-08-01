@@ -17,7 +17,7 @@ from metrics.repository import BenchmarkMetricsRepository
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
-BENCHMARK_ROOT = PROJECT_ROOT / "benchmark" / "vectordbbench"
+BENCHMARK_ROOT = PROJECT_ROOT / "src" / "vectordbbench"
 
 
 def common_parameters(

@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from metrics.models import BenchmarkRunMetrics, ConcurrencyStageMetrics
 from metrics.repository import BenchmarkMetricsRepository
-from metrics.tuning_agent import (
+from agent.tuning_agent import (
     build_benchmark_parameters,
     query_candidate_data,
     query_current_collection_config,
@@ -135,12 +135,12 @@ class TuningAgentQueryTest(unittest.TestCase):
         self.assertEqual(result["search_parameters"], {"ef_search": 192})
         self.assertEqual(result["allowed_search_parameters"], ["ef_search"])
 
-    def test_builds_search_only_single_concurrency_job(self) -> None:
+    def test_builds_full_single_concurrency_job(self) -> None:
         project_root = Path(__file__).resolve().parents[3]
         manager = SimpleNamespace(
             base_config_path=(
                 project_root
-                / "benchmark"
+                / "src"
                 / "vectordbbench"
                 / "config"
                 / "milvushnsw.yml"
@@ -166,8 +166,8 @@ class TuningAgentQueryTest(unittest.TestCase):
             {"ef_search": 256},
         )
 
-        self.assertFalse(parameters.drop_old)
-        self.assertFalse(parameters.load)
+        self.assertTrue(parameters.drop_old)
+        self.assertTrue(parameters.load)
         self.assertTrue(parameters.search_serial)
         self.assertTrue(parameters.search_concurrent)
         self.assertEqual(parameters.num_concurrency, (1,))
@@ -180,7 +180,7 @@ class TuningAgentQueryTest(unittest.TestCase):
         manager = SimpleNamespace(
             base_config_path=(
                 project_root
-                / "benchmark"
+                / "src"
                 / "vectordbbench"
                 / "config"
                 / "milvushnsw.yml"

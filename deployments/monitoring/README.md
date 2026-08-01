@@ -6,12 +6,15 @@ stores them, and Grafana queries Prometheus.
 
 ## Components
 
+- Attu `v3.0.0-beta.6`: `http://localhost:3000`
 - Prometheus `v3.13.1`: `http://localhost:9090`
 - Grafana `13.1.1`: `http://localhost:3001`
 - cAdvisor `0.55.1`: `http://localhost:8080`
 - Milvus metrics: Proxy, MixCoord, StreamingNode, DataNode, and QueryNode
 
 Grafana uses port `3001` because Attu already occupies port `3000`.
+Attu joins the external `milvus-lab` Docker network and connects to
+`milvus-cluster-proxy:19530` by default.
 
 ## Start
 

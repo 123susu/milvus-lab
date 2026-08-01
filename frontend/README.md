@@ -13,7 +13,7 @@ Start the local benchmark API from the repository root:
 
 ```powershell
 .\.venv-bench\Scripts\python.exe `
-  .\benchmark\vectordbbench\benchmark_metrics_api.py
+  .\src\vectordbbench\benchmark_metrics_api.py
 ```
 
 Then start the frontend:

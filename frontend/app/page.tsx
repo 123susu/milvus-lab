@@ -2687,7 +2687,7 @@ export default function Home() {
                 <p>
                   {READ_ONLY_DEMO
                     ? "展示 Agent 基于公开实验快照生成的建议；公开页面不会连接本地 SQLite、调用模型或执行压测。"
-                    : "前置节点先读取 SQLite 历史和当前索引配置，Agent 再按 Recall 目标决定是否调用查询压测。每次包含 Recall 所需的 serial search，并发查询固定为 1，最多 3 次，不重建 Collection。"}
+                    : "前置节点先读取 SQLite 历史和当前索引配置，Agent 再按 Recall 目标决定是否调用完整压测。每次重建 VDBBench、重新导入数据并执行 serial search；并发查询固定为 1，最多 3 次。"}
                 </p>
               </div>
               {READ_ONLY_DEMO ? (

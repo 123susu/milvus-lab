@@ -1,6 +1,22 @@
 name: milvus-monitoring
 
 services:
+  attu:
+    image: zilliz/attu:v3.0.0-beta.6
+    container_name: attu
+    environment:
+      MILVUS_ADDRESS: milvus-cluster-proxy:19530
+      MILVUS_NAME: MilvusTune Local Cluster
+      MILVUS_DATABASE: default
+      ATTU_DB_PATH: /data/attu.db
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - attu-data:/data
+    networks:
+      - milvus-lab
+    restart: unless-stopped
+
   cadvisor:
     image: ghcr.io/google/cadvisor:0.55.1
     container_name: milvus-cadvisor
@@ -45,7 +61,7 @@ services:
     depends_on:
       - prometheus
     ports:
-      # Port 3000 is already used by Attu.
+      # Port 3000 is used by Attu.
       - "127.0.0.1:3001:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
@@ -58,6 +74,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  attu-data:
   prometheus-data:
   grafana-data:
 
